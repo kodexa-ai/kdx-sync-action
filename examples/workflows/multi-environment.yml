@@ -1,0 +1,67 @@
+# Multi-environment deployment workflow
+# Deploys to different Kodexa environments based on branch
+
+name: Multi-Environment Sync
+
+on:
+  push:
+    branches:
+      - main        # Production
+      - staging     # Staging
+      - develop     # Development
+
+jobs:
+  determine-environment:
+    name: Determine Target Environment
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set-env.outputs.environment }}
+      environment-url: ${{ steps.set-env.outputs.url }}
+
+    steps:
+      - name: Set environment based on branch
+        id: set-env
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "environment=production" >> $GITHUB_OUTPUT
+            echo "url=${{ secrets.KODEXA_PROD_URL }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/staging" ]]; then
+            echo "environment=staging" >> $GITHUB_OUTPUT
+            echo "url=${{ secrets.KODEXA_STAGING_URL }}" >> $GITHUB_OUTPUT
+          else
+            echo "environment=development" >> $GITHUB_OUTPUT
+            echo "url=${{ secrets.KODEXA_DEV_URL }}" >> $GITHUB_OUTPUT
+          fi
+
+  sync:
+    name: Sync to ${{ needs.determine-environment.outputs.environment }}
+    runs-on: ubuntu-latest
+    needs: determine-environment
+    environment: ${{ needs.determine-environment.outputs.environment }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Sync to Kodexa ${{ needs.determine-environment.outputs.environment }}
+        id: sync
+        uses: kodexa-ai/kdx-sync-action@v1
+        with:
+          kodexa-url: ${{ needs.determine-environment.outputs.environment-url }}
+          kodexa-token: ${{ secrets.KODEXA_TOKEN }}
+
+      - name: Create summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## 🚀 Deployment to ${{ needs.determine-environment.outputs.environment }}
+
+          | Metric | Value |
+          |--------|-------|
+          | Environment | \`${{ needs.determine-environment.outputs.environment }}\` |
+          | Organizations | ${{ steps.sync.outputs.organizations }} |
+          | Resources Created | ${{ steps.sync.outputs.resources-created }} |
+          | Resources Updated | ${{ steps.sync.outputs.resources-updated }} |
+          | Resources Skipped | ${{ steps.sync.outputs.resources-skipped }} |
+
+          ✅ Deployment completed successfully!
+          EOF

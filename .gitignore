@@ -1,0 +1,25 @@
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Test artifacts
+test-metadata/
+test-output/
+*.log
+
+# Secrets (should never be committed)
+*.key
+*.pem
+.env
+secrets.yml
+
+# GitHub Actions runner cache
+.actions-cache/

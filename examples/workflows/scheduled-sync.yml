@@ -1,0 +1,55 @@
+# Scheduled sync workflow
+# Automatically syncs on a schedule to keep environments in sync
+
+name: Scheduled Sync
+
+on:
+  schedule:
+    # Run every day at 2 AM UTC
+    - cron: '0 2 * * *'
+
+  workflow_dispatch:  # Allow manual triggers
+
+jobs:
+  sync:
+    name: Scheduled Metadata Sync
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Sync to Kodexa
+        id: sync
+        uses: kodexa-ai/kdx-sync-action@v1
+        with:
+          kodexa-url: ${{ secrets.KODEXA_URL }}
+          kodexa-token: ${{ secrets.KODEXA_TOKEN }}
+
+      - name: Create summary
+        if: always()
+        run: |
+          TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## 🕐 Scheduled Sync Report
+
+          **Completed:** $TIMESTAMP
+
+          ### Results
+
+          | Metric | Value |
+          |--------|-------|
+          | Organizations | ${{ steps.sync.outputs.organizations }} |
+          | Resources Created | ${{ steps.sync.outputs.resources-created }} |
+          | Resources Updated | ${{ steps.sync.outputs.resources-updated }} |
+          | Resources Skipped | ${{ steps.sync.outputs.resources-skipped }} |
+
+          ${{ steps.sync.outcome == 'success' && '✅ Sync completed successfully' || '❌ Sync failed - review logs' }}
+          EOF
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "❌ Scheduled sync failed at $(date -u)"
+          # Add notification logic (Slack, PagerDuty, etc.)

@@ -1,0 +1,204 @@
+# Test workflow for the Kodexa Sync action
+# Validates the action works across different platforms
+
+name: Test Action
+
+on:
+  pull_request:
+    paths:
+      - 'action.yml'
+      - '.github/workflows/test.yml'
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  test-matrix:
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+
+    steps:
+      - name: Checkout action
+        uses: actions/checkout@v4
+
+      - name: Create test sync config
+        shell: bash
+        run: |
+          mkdir -p test-metadata
+          cat > test-metadata/sync-config.yaml << EOF
+          metadata_dir: test-metadata
+          organizations:
+            - slug: test-org
+              resources:
+                - type: taxonomy
+                  slug: test-taxonomy
+          EOF
+
+      - name: Test action (dry run)
+        uses: ./
+        with:
+          kodexa-url: https://test.kodexa.com
+          kodexa-token: test-token-12345
+          sync-config: test-metadata/sync-config.yaml
+          dry-run: true
+        continue-on-error: true  # Expected to fail without real credentials
+
+      - name: Verify kdx was installed
+        shell: bash
+        run: |
+          if command -v kdx &> /dev/null; then
+            echo "✅ kdx installed successfully"
+            kdx version
+          else
+            echo "❌ kdx not found in PATH"
+            exit 1
+          fi
+
+  test-versions:
+    name: Test kdx version ${{ matrix.version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        version:
+          - latest
+          # Add specific versions as needed
+          # - v1.0.0
+
+    steps:
+      - name: Checkout action
+        uses: actions/checkout@v4
+
+      - name: Create test config
+        run: |
+          mkdir -p test-metadata
+          cat > test-metadata/sync-config.yaml << EOF
+          metadata_dir: test-metadata
+          organizations:
+            - slug: test-org
+              resources:
+                - type: taxonomy
+                  slug: test-taxonomy
+          EOF
+
+      - name: Test with kdx ${{ matrix.version }}
+        uses: ./
+        with:
+          kodexa-url: https://test.kodexa.com
+          kodexa-token: test-token
+          kdx-version: ${{ matrix.version }}
+          dry-run: true
+        continue-on-error: true
+
+      - name: Verify version
+        run: |
+          kdx version
+
+  validate-action:
+    name: Validate action.yml
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout action
+        uses: actions/checkout@v4
+
+      - name: Validate action metadata
+        uses: docker://rhysd/actionlint:latest
+        with:
+          args: -color .github/workflows/*.yml
+
+  test-filtering:
+    name: Test organization and project filtering
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout action
+        uses: actions/checkout@v4
+
+      - name: Create test config
+        run: |
+          mkdir -p test-metadata
+          cat > test-metadata/sync-config.yaml << EOF
+          metadata_dir: test-metadata
+          organizations:
+            - slug: org1
+              resources:
+                - type: taxonomy
+                  slug: tax1
+            - slug: org2
+              resources:
+                - type: taxonomy
+                  slug: tax2
+          EOF
+
+      - name: Test with organization filter
+        uses: ./
+        with:
+          kodexa-url: https://test.kodexa.com
+          kodexa-token: test-token
+          organization: org1
+          dry-run: true
+        continue-on-error: true
+
+      - name: Test with project filter
+        uses: ./
+        with:
+          kodexa-url: https://test.kodexa.com
+          kodexa-token: test-token
+          project: org1/project1
+          dry-run: true
+        continue-on-error: true
+
+      - name: Test with multiple filters
+        uses: ./
+        with:
+          kodexa-url: https://test.kodexa.com
+          kodexa-token: test-token
+          organization: org1,org2
+          project: org1/project1,org2/project2
+          dry-run: true
+        continue-on-error: true
+
+  test-outputs:
+    name: Test action outputs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout action
+        uses: actions/checkout@v4
+
+      - name: Create test config
+        run: |
+          mkdir -p test-metadata
+          cat > test-metadata/sync-config.yaml << EOF
+          metadata_dir: test-metadata
+          organizations:
+            - slug: test-org
+              resources:
+                - type: taxonomy
+                  slug: test-tax
+          EOF
+
+      - name: Run action
+        id: sync
+        uses: ./
+        with:
+          kodexa-url: https://test.kodexa.com
+          kodexa-token: test-token
+          dry-run: true
+        continue-on-error: true
+
+      - name: Check outputs
+        run: |
+          echo "Organizations: ${{ steps.sync.outputs.organizations }}"
+          echo "Created: ${{ steps.sync.outputs.resources-created }}"
+          echo "Updated: ${{ steps.sync.outputs.resources-updated }}"
+          echo "Skipped: ${{ steps.sync.outputs.resources-skipped }}"

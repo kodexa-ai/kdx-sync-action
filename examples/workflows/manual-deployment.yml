@@ -1,0 +1,88 @@
+# Manual deployment workflow with approval
+# Allows manual triggering with optional dry-run mode
+
+name: Manual Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+      dry-run:
+        description: 'Dry run mode (preview only)'
+        required: false
+        type: boolean
+        default: false
+      organization:
+        description: 'Filter by organization (optional, comma-separated)'
+        required: false
+        type: string
+
+jobs:
+  deploy:
+    name: Deploy to ${{ github.event.inputs.environment }}
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Determine environment URL
+        id: env-url
+        run: |
+          case "${{ github.event.inputs.environment }}" in
+            production)
+              echo "url=${{ secrets.KODEXA_PROD_URL }}" >> $GITHUB_OUTPUT
+              ;;
+            staging)
+              echo "url=${{ secrets.KODEXA_STAGING_URL }}" >> $GITHUB_OUTPUT
+              ;;
+            development)
+              echo "url=${{ secrets.KODEXA_DEV_URL }}" >> $GITHUB_OUTPUT
+              ;;
+          esac
+
+      - name: Sync to Kodexa
+        id: sync
+        uses: kodexa-ai/kdx-sync-action@v1
+        with:
+          kodexa-url: ${{ steps.env-url.outputs.url }}
+          kodexa-token: ${{ secrets.KODEXA_TOKEN }}
+          dry-run: ${{ github.event.inputs.dry-run }}
+          organization: ${{ github.event.inputs.organization }}
+
+      - name: Create deployment summary
+        run: |
+          MODE="${{ github.event.inputs.dry-run == 'true' && '🧪 Dry Run' || '🚀 Deployment' }}"
+
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## $MODE to ${{ github.event.inputs.environment }}
+
+          **Triggered by:** @${{ github.actor }}
+          **Environment:** \`${{ github.event.inputs.environment }}\`
+          **Mode:** ${{ github.event.inputs.dry-run == 'true' && 'Dry Run (Preview Only)' || 'Live Deployment' }}
+
+          ### Results
+
+          | Metric | Value |
+          |--------|-------|
+          | Organizations | ${{ steps.sync.outputs.organizations }} |
+          | Resources Created | ${{ steps.sync.outputs.resources-created }} |
+          | Resources Updated | ${{ steps.sync.outputs.resources-updated }} |
+          | Resources Skipped | ${{ steps.sync.outputs.resources-skipped }} |
+
+          ${{ github.event.inputs.dry-run == 'true' && '**Note:** This was a dry run. No changes were applied.' || '✅ Deployment completed successfully!' }}
+          EOF
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "❌ Deployment failed. Check the logs for details."
+          # Add notification logic here (Slack, email, etc.)

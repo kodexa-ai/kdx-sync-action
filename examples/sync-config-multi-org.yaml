@@ -1,0 +1,35 @@
+# Multi-organization sync configuration
+# This example shows syncing resources across multiple organizations
+
+metadata_dir: kodexa-metadata
+
+organizations:
+  # Production organization
+  - slug: production
+    resources:
+      - type: taxonomy
+        slug: document-types
+      - type: store
+        slug: prod-document-store
+      - type: featureInstance
+        slug: ocr-prod
+
+  # Staging organization
+  - slug: staging
+    resources:
+      - type: taxonomy
+        slug: document-types
+      - type: store
+        slug: staging-document-store
+      - type: featureInstance
+        slug: ocr-staging
+
+  # Development organization
+  - slug: development
+    resources:
+      - type: taxonomy
+        slug: document-types
+      - type: store
+        slug: dev-document-store
+      - type: featureInstance
+        slug: ocr-dev

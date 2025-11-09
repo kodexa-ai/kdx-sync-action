@@ -1,0 +1,29 @@
+# Basic sync workflow
+# Syncs to Kodexa on every push to main branch
+
+name: Sync to Kodexa
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  sync:
+    name: Sync Metadata
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Sync to Kodexa
+        uses: kodexa-ai/kdx-sync-action@v1
+        with:
+          kodexa-url: ${{ secrets.KODEXA_URL }}
+          kodexa-token: ${{ secrets.KODEXA_TOKEN }}
+
+      - name: Report results
+        if: success()
+        run: |
+          echo "✅ Sync completed successfully"

@@ -1,0 +1,19 @@
+# Basic sync configuration
+# This example shows a simple resource-based sync setup
+
+metadata_dir: kodexa-metadata
+
+organizations:
+  - slug: my-organization
+    resources:
+      # Taxonomy for document classification
+      - type: taxonomy
+        slug: document-types
+
+      # Document store configuration
+      - type: store
+        slug: main-document-store
+
+      # Feature type for text extraction
+      - type: featureType
+        slug: text-extraction

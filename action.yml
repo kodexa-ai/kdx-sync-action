@@ -1,0 +1,269 @@
+name: 'Kodexa Sync'
+description: 'Synchronize Kodexa metadata using kdx-cli in GitOps workflows'
+author: 'Kodexa, Inc.'
+
+branding:
+  icon: 'refresh-cw'
+  color: 'blue'
+
+inputs:
+  kodexa-url:
+    description: 'Kodexa platform URL (e.g., https://platform.kodexa.com)'
+    required: true
+
+  kodexa-token:
+    description: 'Kodexa API authentication token (use secrets.KODEXA_TOKEN)'
+    required: true
+
+  sync-config:
+    description: 'Path to sync-config.yaml (auto-discovered if not specified)'
+    required: false
+    default: ''
+
+  metadata-dir:
+    description: 'Metadata directory override (auto-discovered if not specified)'
+    required: false
+    default: ''
+
+  dry-run:
+    description: 'Preview changes without applying them (true/false)'
+    required: false
+    default: 'false'
+
+  kdx-version:
+    description: 'kdx-cli version to use (default: latest)'
+    required: false
+    default: 'latest'
+
+  organization:
+    description: 'Organization slug to filter sync (optional, repeatable via comma-separated)'
+    required: false
+    default: ''
+
+  project:
+    description: 'Project reference as org-slug/project-slug (optional, repeatable via comma-separated)'
+    required: false
+    default: ''
+
+outputs:
+  organizations:
+    description: 'Number of organizations synced'
+    value: ${{ steps.sync.outputs.organizations }}
+
+  resources-created:
+    description: 'Number of resources created'
+    value: ${{ steps.sync.outputs.resources_created }}
+
+  resources-updated:
+    description: 'Number of resources updated'
+    value: ${{ steps.sync.outputs.resources_updated }}
+
+  resources-skipped:
+    description: 'Number of resources skipped (unchanged)'
+    value: ${{ steps.sync.outputs.resources_skipped }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate inputs
+      shell: bash
+      run: |
+        if [[ -z "${{ inputs.kodexa-url }}" ]]; then
+          echo "❌ Error: kodexa-url is required"
+          exit 1
+        fi
+        if [[ -z "${{ inputs.kodexa-token }}" ]]; then
+          echo "❌ Error: kodexa-token is required"
+          exit 1
+        fi
+
+    - name: Detect OS and Architecture
+      id: detect
+      shell: bash
+      run: |
+        OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+        ARCH=$(uname -m)
+
+        # Normalize OS name
+        case "$OS" in
+          linux*)   OS="linux" ;;
+          darwin*)  OS="darwin" ;;
+          mingw*)   OS="windows" ;;
+          msys*)    OS="windows" ;;
+          cygwin*)  OS="windows" ;;
+          *)        echo "❌ Unsupported OS: $OS"; exit 1 ;;
+        esac
+
+        # Normalize architecture
+        case "$ARCH" in
+          x86_64|amd64)   ARCH="x86_64" ;;
+          aarch64|arm64)  ARCH="arm64" ;;
+          *)              echo "❌ Unsupported architecture: $ARCH"; exit 1 ;;
+        esac
+
+        echo "os=$OS" >> $GITHUB_OUTPUT
+        echo "arch=$ARCH" >> $GITHUB_OUTPUT
+        echo "📋 Detected: $OS/$ARCH"
+
+    - name: Determine kdx version
+      id: version
+      shell: bash
+      run: |
+        VERSION="${{ inputs.kdx-version }}"
+
+        if [[ "$VERSION" == "latest" ]]; then
+          echo "🔍 Fetching latest kdx version..."
+          LATEST=$(curl -s https://api.github.com/repos/kodexa-ai/kdx-cli-releases/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+          if [[ -z "$LATEST" ]]; then
+            echo "❌ Failed to fetch latest version"
+            exit 1
+          fi
+          VERSION="$LATEST"
+          echo "✅ Latest version: $VERSION"
+        fi
+
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Cache kdx binary
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.temp }}/kdx-bin
+        key: kdx-${{ steps.version.outputs.version }}-${{ steps.detect.outputs.os }}-${{ steps.detect.outputs.arch }}
+
+    - name: Download kdx binary
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        OS="${{ steps.detect.outputs.os }}"
+        ARCH="${{ steps.detect.outputs.arch }}"
+
+        # Construct download URL based on goreleaser naming
+        if [[ "$OS" == "windows" ]]; then
+          ARCHIVE="kdx_${VERSION#v}_${OS}_${ARCH}.zip"
+          BINARY="kdx.exe"
+        else
+          ARCHIVE="kdx_${VERSION#v}_${OS}_${ARCH}.tar.gz"
+          BINARY="kdx"
+        fi
+
+        DOWNLOAD_URL="https://github.com/kodexa-ai/kdx-cli-releases/releases/download/${VERSION}/${ARCHIVE}"
+
+        echo "📥 Downloading kdx from: $DOWNLOAD_URL"
+
+        mkdir -p "${{ runner.temp }}/kdx-download"
+        cd "${{ runner.temp }}/kdx-download"
+
+        if ! curl -sL -f "$DOWNLOAD_URL" -o "$ARCHIVE"; then
+          echo "❌ Failed to download kdx from $DOWNLOAD_URL"
+          echo "Available releases: https://github.com/kodexa-ai/kdx-cli-releases/releases"
+          exit 1
+        fi
+
+        # Extract archive
+        if [[ "$OS" == "windows" ]]; then
+          unzip -q "$ARCHIVE"
+        else
+          tar -xzf "$ARCHIVE"
+        fi
+
+        # Move binary to cache location
+        mkdir -p "${{ runner.temp }}/kdx-bin"
+        mv "$BINARY" "${{ runner.temp }}/kdx-bin/"
+        chmod +x "${{ runner.temp }}/kdx-bin/$BINARY"
+
+        echo "✅ Downloaded kdx $VERSION"
+
+    - name: Add kdx to PATH
+      shell: bash
+      run: |
+        echo "${{ runner.temp }}/kdx-bin" >> $GITHUB_PATH
+
+    - name: Verify kdx installation
+      shell: bash
+      run: |
+        kdx version
+
+    - name: Build kdx sync command
+      id: build-cmd
+      shell: bash
+      run: |
+        CMD="kdx sync push"
+
+        # Add URL and API key
+        CMD="$CMD --to-url \"${{ inputs.kodexa-url }}\""
+        CMD="$CMD --to-api-key \"${{ inputs.kodexa-token }}\""
+
+        # Add optional config path
+        if [[ -n "${{ inputs.sync-config }}" ]]; then
+          CMD="$CMD --config \"${{ inputs.sync-config }}\""
+        fi
+
+        # Add optional metadata directory
+        if [[ -n "${{ inputs.metadata-dir }}" ]]; then
+          CMD="$CMD --metadata-dir \"${{ inputs.metadata-dir }}\""
+        fi
+
+        # Add dry-run flag
+        if [[ "${{ inputs.dry-run }}" == "true" ]]; then
+          CMD="$CMD --dry-run"
+        fi
+
+        # Add organization filters (comma-separated)
+        if [[ -n "${{ inputs.organization }}" ]]; then
+          IFS=',' read -ra ORGS <<< "${{ inputs.organization }}"
+          for org in "${ORGS[@]}"; do
+            org=$(echo "$org" | xargs)  # trim whitespace
+            if [[ -n "$org" ]]; then
+              CMD="$CMD --organization \"$org\""
+            fi
+          done
+        fi
+
+        # Add project filters (comma-separated)
+        if [[ -n "${{ inputs.project }}" ]]; then
+          IFS=',' read -ra PROJECTS <<< "${{ inputs.project }}"
+          for proj in "${PROJECTS[@]}"; do
+            proj=$(echo "$proj" | xargs)  # trim whitespace
+            if [[ -n "$proj" ]]; then
+              CMD="$CMD --project \"$proj\""
+            fi
+          done
+        fi
+
+        echo "command=$CMD" >> $GITHUB_OUTPUT
+        echo "🚀 Command: $CMD"
+
+    - name: Run kdx sync push
+      id: sync
+      shell: bash
+      run: |
+        set -e
+
+        # Run the command
+        OUTPUT=$(eval "${{ steps.build-cmd.outputs.command }}" 2>&1)
+        EXIT_CODE=$?
+
+        echo "$OUTPUT"
+
+        if [[ $EXIT_CODE -ne 0 ]]; then
+          echo "❌ Sync failed with exit code $EXIT_CODE"
+          exit $EXIT_CODE
+        fi
+
+        # Parse output for statistics (best effort)
+        # Example output: "🚀 Push applied — 2 organizations"
+        # "  Resources: 5 created, 3 updated, 2 unchanged"
+
+        ORGS=$(echo "$OUTPUT" | grep -oP '\d+(?= organization)' || echo "0")
+        CREATED=$(echo "$OUTPUT" | grep -oP '\d+(?= created)' || echo "0")
+        UPDATED=$(echo "$OUTPUT" | grep -oP '\d+(?= updated)' || echo "0")
+        SKIPPED=$(echo "$OUTPUT" | grep -oP '\d+(?= unchanged)' || echo "0")
+
+        echo "organizations=$ORGS" >> $GITHUB_OUTPUT
+        echo "resources_created=$CREATED" >> $GITHUB_OUTPUT
+        echo "resources_updated=$UPDATED" >> $GITHUB_OUTPUT
+        echo "resources_skipped=$SKIPPED" >> $GITHUB_OUTPUT
+
+        echo "✅ Sync completed successfully"

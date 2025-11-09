@@ -1,0 +1,86 @@
+# Pull request validation workflow
+# Validates sync configuration on PRs with dry-run mode
+
+name: Validate Sync Configuration
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'kodexa-metadata/**'
+      - 'sync-config.yaml'
+      - '.github/workflows/**'
+
+jobs:
+  validate:
+    name: Validate Sync
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Dry run sync
+        id: validate
+        uses: kodexa-ai/kdx-sync-action@v1
+        with:
+          kodexa-url: ${{ secrets.KODEXA_URL }}
+          kodexa-token: ${{ secrets.KODEXA_TOKEN }}
+          dry-run: true
+        continue-on-error: true
+
+      - name: Create validation summary
+        run: |
+          if [[ "${{ steps.validate.outcome }}" == "success" ]]; then
+            STATUS="✅ Validation passed"
+            COLOR="success"
+          else
+            STATUS="❌ Validation failed"
+            COLOR="failure"
+          fi
+
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## 🧪 Sync Validation Results
+
+          **Status:** $STATUS
+
+          ### Planned Changes
+
+          | Metric | Count |
+          |--------|-------|
+          | Organizations | ${{ steps.validate.outputs.organizations }} |
+          | Resources to Create | ${{ steps.validate.outputs.resources-created }} |
+          | Resources to Update | ${{ steps.validate.outputs.resources-updated }} |
+          | Resources Unchanged | ${{ steps.validate.outputs.resources-skipped }} |
+
+          **Note:** This is a dry run. No changes have been applied to Kodexa.
+
+          To apply these changes, merge this PR to trigger the sync workflow.
+          EOF
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        if: always()
+        with:
+          script: |
+            const status = '${{ steps.validate.outcome }}' === 'success' ? '✅' : '❌';
+            const message = `### ${status} Sync Validation
+
+            **Organizations:** ${{ steps.validate.outputs.organizations }}
+            **Resources to create:** ${{ steps.validate.outputs.resources-created }}
+            **Resources to update:** ${{ steps.validate.outputs.resources-updated }}
+            **Resources unchanged:** ${{ steps.validate.outputs.resources-skipped }}
+
+            ${status === '✅' ? 'Validation passed! Merging this PR will sync these changes to Kodexa.' : 'Validation failed! Please check the workflow logs for details.'}
+            `;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: message
+            });
+
+      - name: Fail if validation failed
+        if: steps.validate.outcome != 'success'
+        run: exit 1

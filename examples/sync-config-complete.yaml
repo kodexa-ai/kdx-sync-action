@@ -1,0 +1,71 @@
+# Complete sync configuration example
+# This shows all supported resource types for organization-scoped resources
+
+metadata_dir: kodexa-metadata
+
+organizations:
+  - slug: production-org
+    resources:
+      # Taxonomies - classification hierarchies
+      - type: taxonomy
+        slug: document-classification
+
+      - type: taxonomy
+        slug: entity-types
+
+      # Stores - data storage configurations
+      - type: store
+        slug: document-store
+
+      - type: store
+        slug: vector-store
+
+      - type: store
+        slug: graph-store
+
+      # Knowledge types - rule templates
+      - type: knowledgeType
+        slug: conditional-knowledge
+
+      - type: knowledgeType
+        slug: extraction-rules
+
+      # Feature types - generic capabilities
+      - type: featureType
+        slug: text-extraction
+
+      - type: featureType
+        slug: entity-recognition
+
+      # Feature instances - environment-specific deployments
+      - type: featureInstance
+        slug: ocr-extractor-prod
+
+      - type: featureInstance
+        slug: fast-ner-prod
+
+      # Models - ML models
+      - type: model
+        slug: invoice-classifier-v3
+
+      - type: model
+        slug: entity-extractor-v2
+
+      # Project templates
+      - type: projectTemplate
+        slug: invoice-processing-template
+
+      # Data forms
+      - type: dataForm
+        slug: invoice-data-form
+
+      - type: dataForm
+        slug: customer-onboarding-form
+
+      # Exception types
+      - type: exceptionType
+        slug: validation-errors
+
+      # Projects (entire project configs)
+      - type: project
+        slug: finance-automation
