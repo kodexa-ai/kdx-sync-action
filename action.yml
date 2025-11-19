@@ -193,10 +193,16 @@ runs:
         fi
 
         # Parse output for statistics (best effort)
-        TARGETS=$(echo "$OUTPUT" | grep -oP '\d+(?= target)' || echo "0")
-        CREATED=$(echo "$OUTPUT" | grep -oP '\d+(?= created)' || echo "0")
-        UPDATED=$(echo "$OUTPUT" | grep -oP '\d+(?= updated)' || echo "0")
-        SKIPPED=$(echo "$OUTPUT" | grep -oP '\d+(?= unchanged)' || echo "0")
+        # Match patterns like "Resources: 75 updated" or "project: 2 updated, 3 unchanged"
+        # Use sed for portability (works on both GNU and BSD)
+        UPDATED=$(echo "$OUTPUT" | sed -n 's/.*Resources:[[:space:]]*\([0-9]*\)[[:space:]]*updated/\1/p' | head -1)
+        UPDATED=${UPDATED:-0}
+        CREATED=$(echo "$OUTPUT" | sed -n 's/.*resources\?:[[:space:]]*\([0-9]*\)[[:space:]]*created.*/\1/p' | head -1)
+        CREATED=${CREATED:-0}
+        SKIPPED=$(echo "$OUTPUT" | sed -n 's/.*resources\?:[[:space:]]*\([0-9]*\)[[:space:]]*unchanged.*/\1/p' | head -1)
+        SKIPPED=${SKIPPED:-0}
+        # Count number of "Planned deployment" lines for targets
+        TARGETS=$(echo "$OUTPUT" | grep -c "Planned deployment" || echo "0")
 
         echo "targets=$TARGETS" >> $GITHUB_OUTPUT
         echo "resources_created=$CREATED" >> $GITHUB_OUTPUT

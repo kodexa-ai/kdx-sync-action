@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.3] - 2025-11-19
+
+### Fixed
+- Fixed output parsing to correctly handle kdx v0.2.1 output format
+- Replaced Perl-compatible regex (grep -P) with portable sed patterns
+- Fixed GitHub Actions error "Invalid format '75'" when parsing deployment statistics
+- Improved regex to specifically match "Resources: X updated" pattern
+
 ## [2.0.2] - 2025-11-19
 
 ### Changed
