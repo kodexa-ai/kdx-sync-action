@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2025-11-19
+
+### Changed
+- Updated to kdx-cli v0.1.20 with enhanced environment configuration and module path resolution
+- Improved manifest handling with better path resolution
+- Enhanced resource type alias consistency
+
+### Added
+- Support for profile-based environment configuration in kdx-cli
+- Better handling of module paths in manifest files
+
+## [1.0.0] - 2025-11-09
+
 ### Added
 - Initial release of Kodexa Sync GitHub Action
 - Support for syncing metadata using kdx-cli
@@ -21,7 +34,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - Secure handling of authentication tokens via GitHub secrets
 - Binary verification from official release repository
-
-## [1.0.0] - 2025-01-XX
-
-Initial public release.
