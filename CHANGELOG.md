@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.0.1] - 2025-11-19
+## [2.0.1] - 2025-11-19
 
 ### Changed
 - Updated to kdx-cli v0.1.20 with enhanced environment configuration and module path resolution
@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Support for profile-based environment configuration in kdx-cli
 - Better handling of module paths in manifest files
+- Enhanced validation features
+
+## [2.0.0] - 2025-11-19
+
+### Changed
+- Simplified action to be purely branch-based
+- Refactored architecture for better maintainability
 
 ## [1.0.0] - 2025-11-09
 
