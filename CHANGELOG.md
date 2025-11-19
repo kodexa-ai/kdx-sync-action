@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.2] - 2025-11-19
+
+### Changed
+- Updated to use kdx-cli v0.2.1 which fixes critical panic in non-TTY environments
+- CI/CD deployments now work reliably in GitHub Actions and other automated pipelines
+- No action code changes required - automatic kdx-cli version detection handles the update
+
+### Fixed
+- Resolved issue where deployments would fail with exit code 2 and no error message
+- Fixed nil pointer dereference that prevented `kdx sync deploy` from running in CI/CD
+
 ## [2.0.1] - 2025-11-19
 
 ### Changed
