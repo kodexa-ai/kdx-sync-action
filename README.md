@@ -2,179 +2,158 @@
 
 [![GitHub Marketplace](https://img.shields.io/badge/Marketplace-Kodexa%20Sync-blue.svg?colorA=24292e&colorB=0366d6&style=flat&longCache=true&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAOCAYAAAAfSC3RAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAM6wAADOsB5dZE0gAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAERSURBVCiRhZG/SsMxFEZPfsVJ61jbxaF0cRQRcRJ9hlYn30IHN/+9iquDCOIsblIrOjqKgy5aKoJQj4O3EEtbPwhJbr6Te28CmdSKeqzeqr0YbfVIrTBKakvtOl5dtTkK+v4HfA9PEyBFCY9AGVgCBLaBp1jPAyfAJ/AAdIEG0dNAiyP7+K1qIfMdonZic6+WJoBJvQlvuwDqcXadUuqPA1NKAlexbRTAIMvMOCjTbMwl1LtI/6KWJ5Q6rT6Ht1MA58AX8Apcqqt5r2qhrgAXQC3CZ6i1+KMd9TRu3MvA3aH/fFPnBodb6oe6HM8+lYHrGdRXW8M9bMZtPXUji69lmf5Cmamq7quNLFZXD9Rq7v0Bpc1o/tp0fisAAAAASUVORK5CYII=)](https://github.com/marketplace/actions/kodexa-sync)
 
-Synchronize your Kodexa metadata repositories using GitOps workflows. This action enables you to:
+**Zero-configuration GitOps deployment for Kodexa** - Branch determines what gets deployed where.
 
-- 🔄 Push metadata changes from GitHub to Kodexa platform
-- 🌍 Deploy configurations to different environments (dev, staging, production)
-- 🔐 Securely manage credentials using GitHub secrets
-- 🧪 Validate changes with dry-run mode before deployment
-- 📊 Track sync statistics in workflow outputs
+## Philosophy
 
-## Table of Contents
+**One way to do it.** Branch mappings in your config, environment variables in GitHub secrets. That's it.
 
-- [Quick Start](#quick-start)
-- [Inputs](#inputs)
-- [Outputs](#outputs)
-- [Usage Examples](#usage-examples)
-  - [Basic Sync](#basic-sync)
-  - [Multi-Environment Deployment](#multi-environment-deployment)
-  - [Dry Run Validation](#dry-run-validation)
-  - [Filtered Sync](#filtered-sync)
-  - [Pull Request Preview](#pull-request-preview)
-- [Sync Configuration](#sync-configuration)
-- [Security Best Practices](#security-best-practices)
-- [Troubleshooting](#troubleshooting)
+- 🌿 **Branch → Deployment** - Push to main → deploys to production
+- 🎯 **Zero Knobs** - No manual overrides, no complex logic, just config
+- 🔐 **Environment Variables** - API keys from GitHub secrets
+- 🧪 **Dry Run** - Preview changes on PRs
 
 ## Quick Start
 
-1. **Create a sync configuration file** in your repository (e.g., `kodexa-metadata/sync-config.yaml`):
+### 1. Define Branch Mappings
+
+Create `sync-config.yaml`:
 
 ```yaml
 metadata_dir: kodexa-metadata
 
-organizations:
-  - slug: my-org
-    resources:
-      - type: taxonomy
-        slug: document-classification
-      - type: store
-        slug: document-store
-      - type: featureType
-        slug: text-extraction
+# Branch determines deployment
+branch_mappings:
+  - pattern: "main"
+    target: production
+    environment: prod
+
+  - pattern: "staging"
+    target: staging
+    environment: staging
+
+  - pattern: "feature/*"
+    target: development
+    environment: dev
+
+# Environments define API endpoints
+environments:
+  prod:
+    url: https://platform.kodexa.com
+    api_key_from_env: KODEXA_PROD_API_KEY
+
+  staging:
+    url: https://staging.kodexa.com
+    api_key_from_env: KODEXA_STAGING_API_KEY
+
+  dev:
+    url: https://dev.kodexa.com
+    api_key_from_env: KODEXA_DEV_API_KEY
+
+# Targets define what gets deployed
+targets:
+  production:
+    manifests:
+      - organizations/acme-corp/manifest.yaml
+      - organizations/acme-corp/modules/*/manifest.yaml
+
+  staging:
+    manifests:
+      - organizations/acme-corp/manifest.yaml
+
+  development:
+    manifests:
+      - organizations/acme-corp/manifest.yaml
 ```
 
-2. **Add secrets to your GitHub repository**:
-   - `KODEXA_URL` - Your Kodexa platform URL
-   - `KODEXA_TOKEN` - Your Kodexa API token
+### 2. Add Secrets
 
-3. **Create a workflow file** (`.github/workflows/sync.yml`):
+Settings → Secrets → Actions:
+- `KODEXA_PROD_API_KEY`
+- `KODEXA_STAGING_API_KEY`
+- `KODEXA_DEV_API_KEY`
+
+### 3. Create Workflow
+
+`.github/workflows/deploy.yml`:
 
 ```yaml
-name: Sync to Kodexa
+name: Deploy
 
 on:
   push:
-    branches: [main]
+    branches: [main, staging, 'feature/**']
 
 jobs:
-  sync:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Sync to Kodexa
-        uses: kodexa-ai/kdx-sync-action@v1
-        with:
-          kodexa-url: ${{ secrets.KODEXA_URL }}
-          kodexa-token: ${{ secrets.KODEXA_TOKEN }}
+      - uses: kodexa-ai/kdx-sync-action@v2
+        env:
+          KODEXA_PROD_API_KEY: ${{ secrets.KODEXA_PROD_API_KEY }}
+          KODEXA_STAGING_API_KEY: ${{ secrets.KODEXA_STAGING_API_KEY }}
+          KODEXA_DEV_API_KEY: ${{ secrets.KODEXA_DEV_API_KEY }}
 ```
+
+**Done.** Push to `main` → production. Push to `feature/new-thing` → dev.
 
 ## Inputs
 
 | Input | Description | Required | Default |
 |-------|-------------|----------|---------|
-| `kodexa-url` | Kodexa platform URL (e.g., `https://platform.kodexa.com`) | ✅ Yes | - |
-| `kodexa-token` | Kodexa API authentication token | ✅ Yes | - |
-| `sync-config` | Path to sync-config.yaml | ❌ No | Auto-discovered |
-| `metadata-dir` | Metadata directory override | ❌ No | Auto-discovered |
-| `dry-run` | Preview changes without applying (`true`/`false`) | ❌ No | `false` |
-| `kdx-version` | kdx-cli version to use | ❌ No | `latest` |
-| `organization` | Organization slug filter (comma-separated) | ❌ No | - |
-| `project` | Project reference filter (comma-separated, format: `org-slug/project-slug`) | ❌ No | - |
+| `sync-config` | Path to sync-config.yaml | No | Auto-discovered |
+| `metadata-dir` | Metadata directory | No | Auto-discovered |
+| `dry-run` | Preview only (`true`/`false`) | No | `false` |
+| `kdx-version` | kdx-cli version | No | `latest` |
 
 ## Outputs
 
 | Output | Description |
 |--------|-------------|
-| `organizations` | Number of organizations synced |
-| `resources-created` | Number of resources created |
-| `resources-updated` | Number of resources updated |
-| `resources-skipped` | Number of resources skipped (unchanged) |
+| `targets-deployed` | Number of targets deployed |
+| `resources-created` | Resources created |
+| `resources-updated` | Resources updated |
+| `resources-skipped` | Resources unchanged |
 
-## Usage Examples
+## Examples
 
-### Basic Sync
+### Basic Deployment
 
-Sync all resources on every push to main:
+The standard pattern - branch determines everything:
 
 ```yaml
-name: Sync to Production
+name: Deploy
 
 on:
   push:
-    branches: [main]
+    branches: [main, staging, develop]
 
 jobs:
-  sync:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Sync to Kodexa
-        uses: kodexa-ai/kdx-sync-action@v1
-        with:
-          kodexa-url: ${{ secrets.KODEXA_PROD_URL }}
-          kodexa-token: ${{ secrets.KODEXA_PROD_TOKEN }}
+      - uses: kodexa-ai/kdx-sync-action@v2
+        env:
+          KODEXA_PROD_API_KEY: ${{ secrets.KODEXA_PROD_API_KEY }}
+          KODEXA_STAGING_API_KEY: ${{ secrets.KODEXA_STAGING_API_KEY }}
+          KODEXA_DEV_API_KEY: ${{ secrets.KODEXA_DEV_API_KEY }}
 ```
 
-### Multi-Environment Deployment
+### Dry Run on PRs
 
-Deploy to different environments based on branch:
-
-```yaml
-name: Multi-Environment Sync
-
-on:
-  push:
-    branches:
-      - main
-      - staging
-      - develop
-
-jobs:
-  sync:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Determine environment
-        id: env
-        run: |
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            echo "name=production" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.ref }}" == "refs/heads/staging" ]]; then
-            echo "name=staging" >> $GITHUB_OUTPUT
-          else
-            echo "name=development" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Sync to Kodexa
-        uses: kodexa-ai/kdx-sync-action@v1
-        with:
-          kodexa-url: ${{ secrets[format('KODEXA_{0}_URL', steps.env.outputs.name)] }}
-          kodexa-token: ${{ secrets[format('KODEXA_{0}_TOKEN', steps.env.outputs.name)] }}
-
-      - name: Report sync results
-        if: success()
-        run: |
-          echo "✅ Synced to ${{ steps.env.outputs.name }}"
-          echo "Organizations: ${{ steps.sync.outputs.organizations }}"
-          echo "Created: ${{ steps.sync.outputs.resources-created }}"
-          echo "Updated: ${{ steps.sync.outputs.resources-updated }}"
-```
-
-### Dry Run Validation
-
-Validate changes on pull requests without applying them:
+Validate without deploying:
 
 ```yaml
-name: Validate Sync
+name: Validate
 
 on:
   pull_request:
     paths:
       - 'kodexa-metadata/**'
-      - '.github/workflows/**'
+      - 'sync-config.yaml'
 
 jobs:
   validate:
@@ -182,400 +161,291 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Dry run sync
-        uses: kodexa-ai/kdx-sync-action@v1
+      - id: preview
+        uses: kodexa-ai/kdx-sync-action@v2
         with:
-          kodexa-url: ${{ secrets.KODEXA_URL }}
-          kodexa-token: ${{ secrets.KODEXA_TOKEN }}
           dry-run: true
+        env:
+          KODEXA_DEV_API_KEY: ${{ secrets.KODEXA_DEV_API_KEY }}
 
-      - name: Comment PR
-        uses: actions/github-script@v7
-        if: always()
+      - uses: actions/github-script@v7
         with:
           script: |
-            const output = `### 🧪 Sync Validation Results
-
-            - Organizations: ${{ steps.sync.outputs.organizations }}
-            - Resources to create: ${{ steps.sync.outputs.resources-created }}
-            - Resources to update: ${{ steps.sync.outputs.resources-updated }}
-            - Resources unchanged: ${{ steps.sync.outputs.resources-skipped }}
-
-            ${process.env.GITHUB_WORKFLOW_CONCLUSION === 'success' ? '✅ Validation passed!' : '❌ Validation failed!'}
-            `;
-
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: output
+              body: `## Deployment Preview
+
+              Targets: ${{ steps.preview.outputs.targets-deployed }}
+              Create: ${{ steps.preview.outputs.resources-created }}
+              Update: ${{ steps.preview.outputs.resources-updated }}
+              Skip: ${{ steps.preview.outputs.resources-skipped }}`
             });
 ```
 
-### Filtered Sync
+### Production with Approval
 
-Sync only specific organizations or projects:
-
-```yaml
-name: Sync Specific Resources
-
-on:
-  workflow_dispatch:
-    inputs:
-      organizations:
-        description: 'Organizations to sync (comma-separated)'
-        required: false
-      projects:
-        description: 'Projects to sync (format: org/project, comma-separated)'
-        required: false
-
-jobs:
-  sync:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Sync filtered resources
-        uses: kodexa-ai/kdx-sync-action@v1
-        with:
-          kodexa-url: ${{ secrets.KODEXA_URL }}
-          kodexa-token: ${{ secrets.KODEXA_TOKEN }}
-          organization: ${{ github.event.inputs.organizations }}
-          project: ${{ github.event.inputs.projects }}
-```
-
-### Pull Request Preview
-
-Automatically preview sync changes on pull requests:
+Require manual approval:
 
 ```yaml
-name: PR Sync Preview
+name: Production
 
-on:
-  pull_request:
-    types: [opened, synchronize]
-    paths:
-      - 'kodexa-metadata/**'
-
-jobs:
-  preview:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Dry run sync
-        id: preview
-        uses: kodexa-ai/kdx-sync-action@v1
-        with:
-          kodexa-url: ${{ secrets.KODEXA_URL }}
-          kodexa-token: ${{ secrets.KODEXA_TOKEN }}
-          dry-run: true
-
-      - name: Generate summary
-        run: |
-          cat >> $GITHUB_STEP_SUMMARY << EOF
-          ## 🔍 Sync Preview
-
-          This pull request will sync the following changes:
-
-          | Metric | Count |
-          |--------|-------|
-          | Organizations | ${{ steps.preview.outputs.organizations }} |
-          | Resources to create | ${{ steps.preview.outputs.resources-created }} |
-          | Resources to update | ${{ steps.preview.outputs.resources-updated }} |
-          | Resources unchanged | ${{ steps.preview.outputs.resources-skipped }} |
-
-          **Note:** This is a preview. No changes have been applied to Kodexa.
-          EOF
-```
-
-### Manual Deployment with Approvals
-
-Require manual approval before syncing to production:
-
-```yaml
-name: Production Deployment
-
-on:
-  workflow_dispatch:
-
-jobs:
-  sync:
-    runs-on: ubuntu-latest
-    environment: production  # Requires environment protection rules
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Sync to Production
-        uses: kodexa-ai/kdx-sync-action@v1
-        with:
-          kodexa-url: ${{ secrets.KODEXA_PROD_URL }}
-          kodexa-token: ${{ secrets.KODEXA_PROD_TOKEN }}
-
-      - name: Notify on success
-        if: success()
-        run: |
-          echo "✅ Production sync completed successfully"
-          # Add notification logic (Slack, email, etc.)
-```
-
-### Schedule-Based Sync
-
-Automatically sync on a schedule:
-
-```yaml
-name: Scheduled Sync
-
-on:
-  schedule:
-    - cron: '0 2 * * *'  # Run at 2 AM UTC daily
-  workflow_dispatch:  # Allow manual triggers
-
-jobs:
-  sync:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Sync to Kodexa
-        uses: kodexa-ai/kdx-sync-action@v1
-        with:
-          kodexa-url: ${{ secrets.KODEXA_URL }}
-          kodexa-token: ${{ secrets.KODEXA_TOKEN }}
-
-      - name: Report results
-        if: always()
-        run: |
-          echo "Sync completed at $(date)"
-          echo "Organizations: ${{ steps.sync.outputs.organizations }}"
-```
-
-## Sync Configuration
-
-The action uses a `sync-config.yaml` file to define which resources to synchronize. Here's a complete example:
-
-### Resource-Based Configuration (Recommended)
-
-```yaml
-# sync-config.yaml
-metadata_dir: kodexa-metadata
-
-organizations:
-  - slug: my-organization
-    resources:
-      # Taxonomies (classification hierarchies)
-      - type: taxonomy
-        slug: document-classification
-
-      - type: taxonomy
-        slug: entity-types
-
-      # Data stores
-      - type: store
-        slug: document-store
-
-      - type: store
-        slug: vector-store
-
-      # Knowledge types
-      - type: knowledgeType
-        slug: conditional-rules
-
-      # Feature types
-      - type: featureType
-        slug: text-extraction
-
-      # Feature instances
-      - type: featureInstance
-        slug: ocr-extractor-prod
-
-      # Models
-      - type: model
-        slug: invoice-classifier
-
-      # Project templates
-      - type: projectTemplate
-        slug: invoice-processing
-
-      # Data forms
-      - type: dataForm
-        slug: invoice-form
-```
-
-### Project-Based Configuration (Legacy)
-
-```yaml
-# sync-config.yaml
-metadata_dir: kodexa-metadata
-
-organizations:
-  - slug: my-organization
-    projects:
-      - finance-automation
-      - operations-bot
-
-  - slug: research-org
-    # Omit projects to sync all
-```
-
-### Supported Resource Types
-
-**Organization-scoped resources:**
-- `taxonomy` (aliases: `label`)
-- `store` (aliases: `datastore`, `documentstore`)
-- `knowledgeType`
-- `featureType`
-- `featureInstance`
-- `model` (alias: `cloudmodel`)
-- `projectTemplate`
-- `dataForm`
-- `exceptionType`
-- `project`
-
-**Project-scoped resources** (requires project context):
-- `knowledgeItem`
-- `assistant`
-- `workflow`
-- `action`
-- `exception`
-
-## Security Best Practices
-
-### 1. Use GitHub Secrets
-
-Never hardcode credentials in your workflows. Always use GitHub secrets:
-
-```yaml
-with:
-  kodexa-url: ${{ secrets.KODEXA_URL }}      # ✅ Correct
-  kodexa-token: ${{ secrets.KODEXA_TOKEN }}  # ✅ Correct
-
-# ❌ Never do this:
-with:
-  kodexa-url: "https://my-instance.kodexa.com"
-  kodexa-token: "my-api-key-12345"
-```
-
-### 2. Use Environment Secrets for Multi-Environment
-
-For multiple environments, use environment-specific secrets:
-
-```yaml
-jobs:
-  sync:
-    environment: production  # Links to 'production' environment in GitHub
-    steps:
-      - uses: kodexa-ai/kdx-sync-action@v1
-        with:
-          kodexa-url: ${{ secrets.KODEXA_URL }}      # Environment-specific
-          kodexa-token: ${{ secrets.KODEXA_TOKEN }}  # Environment-specific
-```
-
-### 3. Restrict Branch Access
-
-Use branch protection rules to control when syncs occur:
-
-```yaml
-on:
-  push:
-    branches:
-      - main  # Only sync from main branch
-```
-
-### 4. Require Approval for Production
-
-Use environment protection rules in GitHub to require manual approval before production deployments.
-
-### 5. Use Dry Run for Validation
-
-Always validate changes with dry run before applying:
-
-```yaml
-# On PR: dry run validation
-on: pull_request
-
-# On merge: actual sync
 on:
   push:
     branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production  # Requires approval in Settings
+    steps:
+      - uses: actions/checkout@v4
+      - uses: kodexa-ai/kdx-sync-action@v2
+        env:
+          KODEXA_PROD_API_KEY: ${{ secrets.KODEXA_PROD_API_KEY }}
+```
+
+### Multi-Target Deployment
+
+Deploy to multiple organizations:
+
+```yaml
+# sync-config.yaml
+branch_mappings:
+  - pattern: "main"
+    targets:
+      - name: org-a-prod
+        environment: prod
+      - name: org-b-prod
+        environment: prod
+
+targets:
+  org-a-prod:
+    manifests: [organizations/org-a/manifest.yaml]
+  org-b-prod:
+    manifests: [organizations/org-b/manifest.yaml]
+```
+
+## Configuration
+
+### Complete Example
+
+```yaml
+metadata_dir: kodexa-metadata
+
+branch_mappings:
+  # Production
+  - pattern: "main"
+    target: production
+    environment: prod
+
+  # Staging
+  - pattern: "staging"
+    target: staging
+    environment: staging
+
+  # Development
+  - pattern: "develop"
+    target: development
+    environment: dev
+
+  - pattern: "feature/*"
+    target: development
+    environment: dev
+
+  # Hotfix to both
+  - pattern: "hotfix/*"
+    targets:
+      - name: staging
+        environment: staging
+      - name: production
+        environment: prod
+
+environments:
+  prod:
+    url: https://platform.kodexa.com
+    api_key_from_env: KODEXA_PROD_API_KEY
+
+  staging:
+    url: https://staging.kodexa.com
+    api_key_from_env: KODEXA_STAGING_API_KEY
+
+  dev:
+    url: https://dev.kodexa.com
+    api_key_from_env: KODEXA_DEV_API_KEY
+
+targets:
+  production:
+    manifests:
+      - organizations/acme-corp/manifest.yaml
+      - organizations/acme-corp/modules/*/manifest.yaml
+
+  staging:
+    manifests:
+      - organizations/acme-corp/manifest.yaml
+
+  development:
+    manifests:
+      - organizations/acme-corp/manifest.yaml
+```
+
+### Branch Patterns
+
+Glob patterns supported:
+- `main` - Exact
+- `feature/*` - Any feature branch
+- `release/*` - Any release
+- `hotfix/*` - Any hotfix
+- `*` - Fallback (matches anything)
+
+First match wins.
+
+## Security
+
+### Environment-Specific Secrets
+
+```yaml
+# GitHub Secrets
+KODEXA_PROD_API_KEY
+KODEXA_STAGING_API_KEY
+KODEXA_DEV_API_KEY
+
+# Referenced in sync-config.yaml
+environments:
+  prod:
+    api_key_from_env: KODEXA_PROD_API_KEY
+```
+
+### Branch Protection
+
+- Require PR reviews for `main`
+- Require status checks
+- Restrict push access
+
+### Environment Protection
+
+Settings → Environments → `production`:
+- Add required reviewers
+- Add deployment protection rules
+
+```yaml
+jobs:
+  deploy:
+    environment: production  # Requires approval
+```
+
+### Validation First
+
+```yaml
+on:
+  pull_request:  # Dry run
+  push:
+    branches: [main]  # Real deploy
 ```
 
 ## Troubleshooting
 
 ### Binary Download Failed
 
-**Problem:** Action fails with "Failed to download kdx"
+Check [releases](https://github.com/kodexa-ai/kdx-cli-releases/releases), specify version:
 
-**Solutions:**
-1. Check that the specified kdx version exists in [releases](https://github.com/kodexa-ai/kdx-cli-releases/releases)
-2. Verify network connectivity from GitHub Actions runner
-3. Try specifying an explicit version instead of "latest":
+```yaml
+with:
+  kdx-version: "v0.1.20"
+```
+
+### Branch Mapping Not Found
+
+Verify `sync-config.yaml` has pattern for your branch:
+
+```yaml
+branch_mappings:
+  - pattern: "*"  # Fallback
+    target: development
+    environment: dev
+```
+
+### Environment Variable Not Found
+
+1. Secret exists in GitHub?
+2. `env:` block references it?
+3. Name matches `api_key_from_env`?
+
+### Deployment Failed
+
+Run with dry-run first:
+
+```yaml
+with:
+  dry-run: true
+```
+
+Check:
+- Manifest files are valid YAML
+- Referenced resources exist
+- API credentials have permissions
+
+## Migration from v1
+
+**v1** (old): Manual environment logic in workflow
+
+```yaml
+# Old - complex
+- name: Determine environment
+  run: |
+    if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+      echo "url=${{ secrets.PROD_URL }}" >> $GITHUB_ENV
+      echo "token=${{ secrets.PROD_TOKEN }}" >> $GITHUB_ENV
+    fi
+
+- uses: kodexa-ai/kdx-sync-action@v1
+  with:
+    kodexa-url: ${{ env.url }}
+    kodexa-token: ${{ env.token }}
+```
+
+**v2** (new): Branch mappings in config
+
+```yaml
+# New - simple
+- uses: kodexa-ai/kdx-sync-action@v2
+  env:
+    KODEXA_PROD_API_KEY: ${{ secrets.KODEXA_PROD_API_KEY }}
+```
+
+**Steps:**
+
+1. **Move mappings** to `sync-config.yaml`:
    ```yaml
-   with:
-     kdx-version: "v1.0.0"
+   branch_mappings:
+     - pattern: "main"
+       target: production
+       environment: prod
    ```
 
-### Authentication Errors
-
-**Problem:** "API authentication errors" or "401 Unauthorized"
-
-**Solutions:**
-1. Verify your `KODEXA_TOKEN` secret is correct and not expired
-2. Ensure the token has appropriate permissions for the resources being synced
-3. Check that `KODEXA_URL` is correct and accessible
-
-### Config Not Found
-
-**Problem:** "sync-config.yaml not found"
-
-**Solutions:**
-1. Ensure `sync-config.yaml` exists in your repository
-2. Specify the path explicitly:
+2. **Add environments** to config:
    ```yaml
-   with:
-     sync-config: path/to/sync-config.yaml
+   environments:
+     prod:
+       url: https://platform.kodexa.com
+       api_key_from_env: KODEXA_PROD_API_KEY
    ```
-3. Check file permissions and repository structure
 
-### Validation Errors
+3. **Simplify workflow**:
+   ```yaml
+   - uses: kodexa-ai/kdx-sync-action@v2
+     env:
+       KODEXA_PROD_API_KEY: ${{ secrets.KODEXA_PROD_API_KEY }}
+   ```
 
-**Problem:** Sync fails with validation errors
-
-**Solutions:**
-1. Run with `dry-run: true` to see detailed error messages
-2. Verify resource slugs exist in your Kodexa instance
-3. Check that all required fields are present in metadata files
-4. Ensure feature instances reference valid feature types
-
-### Unsupported OS/Architecture
-
-**Problem:** "Unsupported OS" or "Unsupported architecture"
-
-**Supported platforms:**
-- Linux: amd64, arm64
-- macOS: amd64, arm64
-- Windows: amd64
-
-If you encounter this error:
-1. Check the runner OS: `runs-on: ubuntu-latest` (recommended)
-2. Verify the architecture matches supported platforms
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit issues or pull requests.
-
-## License
-
-Copyright © 2025 Kodexa, Inc. All rights reserved.
-
-This action interfaces with the proprietary kdx-cli tool. See [LICENSE](LICENSE) for details.
+4. **Delete environment detection logic** - config handles it
 
 ## Support
 
-For issues related to:
-- **This GitHub Action**: Open an issue in this repository
-- **kdx-cli tool**: Contact support@kodexa.com
-- **Kodexa platform**: Visit https://support.kodexa.com
+- **Action issues**: [GitHub Issues](https://github.com/kodexa-ai/kdx-sync-action/issues)
+- **CLI issues**: support@kodexa.com
+- **Platform**: https://support.kodexa.com
 
 ---
 

@@ -1,5 +1,5 @@
 name: 'Kodexa Sync'
-description: 'Synchronize Kodexa metadata using kdx-cli in GitOps workflows'
+description: 'GitOps deployment for Kodexa metadata - branch mappings drive everything'
 author: 'Kodexa, Inc.'
 
 branding:
@@ -7,14 +7,6 @@ branding:
   color: 'blue'
 
 inputs:
-  kodexa-url:
-    description: 'Kodexa platform URL (e.g., https://platform.kodexa.com)'
-    required: true
-
-  kodexa-token:
-    description: 'Kodexa API authentication token (use secrets.KODEXA_TOKEN)'
-    required: true
-
   sync-config:
     description: 'Path to sync-config.yaml (auto-discovered if not specified)'
     required: false
@@ -26,7 +18,7 @@ inputs:
     default: ''
 
   dry-run:
-    description: 'Preview changes without applying them (true/false)'
+    description: 'Preview deployment without making changes (true/false)'
     required: false
     default: 'false'
 
@@ -35,20 +27,10 @@ inputs:
     required: false
     default: 'latest'
 
-  organization:
-    description: 'Organization slug to filter sync (optional, repeatable via comma-separated)'
-    required: false
-    default: ''
-
-  project:
-    description: 'Project reference as org-slug/project-slug (optional, repeatable via comma-separated)'
-    required: false
-    default: ''
-
 outputs:
-  organizations:
-    description: 'Number of organizations synced'
-    value: ${{ steps.sync.outputs.organizations }}
+  targets-deployed:
+    description: 'Number of targets deployed'
+    value: ${{ steps.sync.outputs.targets }}
 
   resources-created:
     description: 'Number of resources created'
@@ -65,18 +47,6 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    - name: Validate inputs
-      shell: bash
-      run: |
-        if [[ -z "${{ inputs.kodexa-url }}" ]]; then
-          echo "❌ Error: kodexa-url is required"
-          exit 1
-        fi
-        if [[ -z "${{ inputs.kodexa-token }}" ]]; then
-          echo "❌ Error: kodexa-token is required"
-          exit 1
-        fi
-
     - name: Detect OS and Architecture
       id: detect
       shell: bash
@@ -185,15 +155,14 @@ runs:
       run: |
         kdx version
 
-    - name: Build kdx sync command
-      id: build-cmd
+    - name: Run kdx sync deploy
+      id: sync
       shell: bash
       run: |
-        CMD="kdx sync push"
+        set -e
 
-        # Add URL and API key
-        CMD="$CMD --to-url \"${{ inputs.kodexa-url }}\""
-        CMD="$CMD --to-api-key \"${{ inputs.kodexa-token }}\""
+        # Build command - simple and opinionated
+        CMD="kdx sync deploy"
 
         # Add optional config path
         if [[ -n "${{ inputs.sync-config }}" ]]; then
@@ -205,65 +174,33 @@ runs:
           CMD="$CMD --metadata-dir \"${{ inputs.metadata-dir }}\""
         fi
 
-        # Add dry-run flag
+        # Add dry-run flag if requested
         if [[ "${{ inputs.dry-run }}" == "true" ]]; then
           CMD="$CMD --dry-run"
         fi
 
-        # Add organization filters (comma-separated)
-        if [[ -n "${{ inputs.organization }}" ]]; then
-          IFS=',' read -ra ORGS <<< "${{ inputs.organization }}"
-          for org in "${ORGS[@]}"; do
-            org=$(echo "$org" | xargs)  # trim whitespace
-            if [[ -n "$org" ]]; then
-              CMD="$CMD --organization \"$org\""
-            fi
-          done
-        fi
-
-        # Add project filters (comma-separated)
-        if [[ -n "${{ inputs.project }}" ]]; then
-          IFS=',' read -ra PROJECTS <<< "${{ inputs.project }}"
-          for proj in "${PROJECTS[@]}"; do
-            proj=$(echo "$proj" | xargs)  # trim whitespace
-            if [[ -n "$proj" ]]; then
-              CMD="$CMD --project \"$proj\""
-            fi
-          done
-        fi
-
-        echo "command=$CMD" >> $GITHUB_OUTPUT
         echo "🚀 Command: $CMD"
 
-    - name: Run kdx sync push
-      id: sync
-      shell: bash
-      run: |
-        set -e
-
-        # Run the command
-        OUTPUT=$(eval "${{ steps.build-cmd.outputs.command }}" 2>&1)
+        # Run deployment
+        OUTPUT=$(eval "$CMD" 2>&1)
         EXIT_CODE=$?
 
         echo "$OUTPUT"
 
         if [[ $EXIT_CODE -ne 0 ]]; then
-          echo "❌ Sync failed with exit code $EXIT_CODE"
+          echo "❌ Deployment failed with exit code $EXIT_CODE"
           exit $EXIT_CODE
         fi
 
         # Parse output for statistics (best effort)
-        # Example output: "🚀 Push applied — 2 organizations"
-        # "  Resources: 5 created, 3 updated, 2 unchanged"
-
-        ORGS=$(echo "$OUTPUT" | grep -oP '\d+(?= organization)' || echo "0")
+        TARGETS=$(echo "$OUTPUT" | grep -oP '\d+(?= target)' || echo "0")
         CREATED=$(echo "$OUTPUT" | grep -oP '\d+(?= created)' || echo "0")
         UPDATED=$(echo "$OUTPUT" | grep -oP '\d+(?= updated)' || echo "0")
         SKIPPED=$(echo "$OUTPUT" | grep -oP '\d+(?= unchanged)' || echo "0")
 
-        echo "organizations=$ORGS" >> $GITHUB_OUTPUT
+        echo "targets=$TARGETS" >> $GITHUB_OUTPUT
         echo "resources_created=$CREATED" >> $GITHUB_OUTPUT
         echo "resources_updated=$UPDATED" >> $GITHUB_OUTPUT
         echo "resources_skipped=$SKIPPED" >> $GITHUB_OUTPUT
 
-        echo "✅ Sync completed successfully"
+        echo "✅ Deployment completed successfully"
