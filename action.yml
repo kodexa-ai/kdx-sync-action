@@ -181,14 +181,22 @@ runs:
 
         echo "🚀 Command: $CMD"
 
-        # Run deployment
-        OUTPUT=$(eval "$CMD" 2>&1)
+        # Run deployment - stream output in real-time AND capture for parsing
+        # Using tee to both display and capture output
+        set +e  # Don't exit on error yet
+        OUTPUT=$(eval "$CMD" 2>&1 | tee /dev/stderr)
         EXIT_CODE=$?
-
-        echo "$OUTPUT"
+        set -e
 
         if [[ $EXIT_CODE -ne 0 ]]; then
+          echo ""
           echo "❌ Deployment failed with exit code $EXIT_CODE"
+          if [[ -z "$OUTPUT" ]]; then
+            echo "⚠️  No output was produced by kdx. This may indicate:"
+            echo "   - Missing or invalid API key environment variable"
+            echo "   - Configuration file not found"
+            echo "   - Invalid sync-config.yaml format"
+          fi
           exit $EXIT_CODE
         fi
 

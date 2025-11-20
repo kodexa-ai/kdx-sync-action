@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.4] - 2025-11-19
+
+### Fixed
+- Stream kdx command output in real-time instead of capturing silently
+- Show helpful diagnostic message when kdx produces no output
+- Use `tee` to display output immediately while still capturing for parsing
+- Prevents silent failures where errors are hidden until after command completes
+
+### Changed
+- Output now appears in real-time during deployment instead of all at once at the end
+- Better error messages when deployment fails without output
+
 ## [2.0.3] - 2025-11-19
 
 ### Fixed
