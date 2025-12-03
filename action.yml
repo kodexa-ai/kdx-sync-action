@@ -292,10 +292,18 @@ runs:
 
         # Read and output JSON report if it exists (for use in subsequent steps)
         if [[ -f "$JSON_REPORT_PATH" ]]; then
-          # Use EOF delimiter for multiline JSON
-          echo "json_report<<EOF" >> $GITHUB_OUTPUT
-          cat "$JSON_REPORT_PATH" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          # Output raw JSON for debugging
+          echo "📊 JSON Report Contents:"
+          cat "$JSON_REPORT_PATH"
+          echo ""
+
+          # Use a unique random delimiter to avoid conflicts with JSON content
+          DELIMITER="KDXJSON_$(date +%s)_END"
+          {
+            echo "json_report<<${DELIMITER}"
+            cat "$JSON_REPORT_PATH"
+            echo "${DELIMITER}"
+          } >> $GITHUB_OUTPUT
           echo "📊 JSON report generated at: $JSON_REPORT_PATH"
         fi
 
