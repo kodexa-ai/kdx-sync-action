@@ -79,10 +79,6 @@ outputs:
     description: 'Number of resources skipped (unchanged)'
     value: ${{ steps.sync.outputs.resources_skipped }}
 
-  json-report:
-    description: 'JSON deployment report (can be used in subsequent steps)'
-    value: ${{ steps.sync.outputs.json_report }}
-
   json-report-path:
     description: 'Path to the JSON report file'
     value: ${{ steps.sync.outputs.json_report_path }}
@@ -290,21 +286,13 @@ runs:
         # Output JSON report path and content
         echo "json_report_path=$JSON_REPORT_PATH" >> $GITHUB_OUTPUT
 
-        # Read and output JSON report if it exists (for use in subsequent steps)
+        # Log JSON report if it exists (use json_report_path output to read in subsequent steps)
         if [[ -f "$JSON_REPORT_PATH" ]]; then
-          # Output raw JSON for debugging
+          echo "📊 JSON Report generated at: $JSON_REPORT_PATH"
           echo "📊 JSON Report Contents:"
           cat "$JSON_REPORT_PATH"
           echo ""
-
-          # Use a unique random delimiter to avoid conflicts with JSON content
-          DELIMITER="KDXJSON_$(date +%s)_END"
-          {
-            echo "json_report<<${DELIMITER}"
-            cat "$JSON_REPORT_PATH"
-            echo "${DELIMITER}"
-          } >> $GITHUB_OUTPUT
-          echo "📊 JSON report generated at: $JSON_REPORT_PATH"
+          echo "💡 Use \${{ steps.sync.outputs.json_report_path }} to read the report in subsequent steps"
         fi
 
         echo "✅ Deployment completed successfully"
