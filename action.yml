@@ -376,6 +376,7 @@ runs:
         DRY_RUN="${{ inputs.dry-run }}"
         CHANNEL_ID="${{ inputs.slack-channel-id }}"
         SLACK_TOKEN="${{ inputs.slack-token }}"
+        JSON_REPORT_PATH="${{ steps.sync.outputs.json_report_path }}"
 
         # Calculate total
         TOTAL=$((CREATED + UPDATED + SKIPPED))
@@ -393,6 +394,42 @@ runs:
 
         # Build run URL
         RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+        # Build environment breakdown from JSON report if available
+        ENV_BLOCKS=""
+        if [[ -f "$JSON_REPORT_PATH" ]] && command -v jq &> /dev/null; then
+          # Extract environment stats from JSON - try multiple possible structures
+          ENV_TEXT=$(jq -r '
+            # Try .environments first, then root level keys that look like environments
+            if .environments then
+              .environments | to_entries |
+              map("• *\(.key)*: \(.value.updated // .value.resources_updated // 0) updated, \(.value.created // .value.resources_created // 0) created, \(.value.unchanged // .value.resources_unchanged // 0) unchanged") |
+              join("\n")
+            elif type == "object" then
+              # Check if root has environment-like keys (not metadata keys)
+              to_entries |
+              map(select(.key | test("^(dev|staging|prod|production|demo|test|smbc|cass|kodexa)"; "i"))) |
+              map("• *\(.key)*: \(.value.updated // .value.resources_updated // 0) updated, \(.value.created // .value.resources_created // 0) created, \(.value.unchanged // .value.resources_unchanged // 0) unchanged") |
+              join("\n")
+            else
+              ""
+            end
+          ' "$JSON_REPORT_PATH" 2>/dev/null || echo "")
+
+          if [[ -n "$ENV_TEXT" && "$ENV_TEXT" != "" ]]; then
+            ENV_BLOCKS=',
+            {
+              "type": "divider"
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*:office: Environments:*\n'"$ENV_TEXT"'"
+              }
+            }'
+          fi
+        fi
 
         # Create Slack Block Kit message
         SLACK_PAYLOAD=$(cat << EOFSLACK
@@ -425,28 +462,28 @@ runs:
               "fields": [
                 {
                   "type": "mrkdwn",
-                  "text": "*:new: Created:*\n$CREATED"
+                  "text": ":sparkles: *Created:* $CREATED"
                 },
                 {
                   "type": "mrkdwn",
-                  "text": "*:arrows_counterclockwise: Updated:*\n$UPDATED"
+                  "text": ":arrows_counterclockwise: *Updated:* $UPDATED"
                 },
                 {
                   "type": "mrkdwn",
-                  "text": "*:next_track_button: Unchanged:*\n$SKIPPED"
+                  "text": ":fast_forward: *Unchanged:* $SKIPPED"
                 },
                 {
                   "type": "mrkdwn",
-                  "text": "*:bar_chart: Total:*\n$TOTAL"
+                  "text": ":bar_chart: *Total:* $TOTAL"
                 }
               ]
-            },
+            }$ENV_BLOCKS,
             {
               "type": "context",
               "elements": [
                 {
                   "type": "mrkdwn",
-                  "text": "Triggered by *${{ github.actor }}* • <$RUN_URL|View Run #${{ github.run_number }}>"
+                  "text": "Triggered by *${{ github.actor }}* | <$RUN_URL|View Run #${{ github.run_number }}>"
                 }
               ]
             }
