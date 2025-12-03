@@ -7,10 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2025-12-03
+
+### Added
+- **Built-in Slack Notifications**: New `slack-channel-id` and `slack-token` inputs for automatic deployment notifications
+  - Rich Block Kit formatted messages with deployment stats
+  - Shows created/updated/unchanged resource counts
+  - Includes repository, branch, and actor information
+  - Links directly to the GitHub Actions run
+- **GitHub Job Summary**: New `annotate-summary` input adds deployment summary to the workflow run
+  - Markdown table with resource counts
+  - Repository and commit details
+  - Environment breakdown (when available)
+
+### Changed
+- Renamed `workers` input to `threads` to match kdx-cli flag naming
+
+### Documentation
+- Added Slack setup guide with OAuth configuration steps
+- Added GitHub Job Summary examples
+- Added full-featured example combining all notification options
+
 ## [2.1.0] - 2025-12-03
 
 ### Added
-- **Parallel Execution**: New `workers` input to control parallel resource deployment (default: 8 workers)
+- **Parallel Execution**: New `threads` input to control parallel resource deployment (default: 8 threads)
 - **Resource Filtering**: New `filter` input for selective resource deployment by pattern (e.g., `invoice-*`)
 - **Branch Override**: New `branch` input to override automatic branch detection
 - **Tag Override**: New `tag` input to enable tag-based deployment mappings
@@ -18,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **JSON Report Path**: New `json-report-path` output provides path to the JSON report file
 
 ### Changed
-- Default worker count is now 8 for faster deployments (previously single-threaded)
+- Default thread count is now 8 for faster deployments (previously single-threaded)
 - Enhanced command building to support all new kdx-cli v0.5.0 features
 - Updated documentation with comprehensive examples for new features
 

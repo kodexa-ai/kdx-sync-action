@@ -27,8 +27,8 @@ inputs:
     required: false
     default: 'latest'
 
-  workers:
-    description: 'Number of parallel workers for resource deployment (default: 8)'
+  threads:
+    description: 'Number of parallel threads for resource deployment (default: 8)'
     required: false
     default: '8'
 
@@ -46,6 +46,21 @@ inputs:
     description: 'Override branch detection with specific tag mapping'
     required: false
     default: ''
+
+  slack-channel-id:
+    description: 'Slack channel ID to post deployment summary (optional)'
+    required: false
+    default: ''
+
+  slack-token:
+    description: 'Slack Bot Token for posting messages (optional)'
+    required: false
+    default: ''
+
+  annotate-summary:
+    description: 'Add deployment summary to GitHub Actions job summary (true/false)'
+    required: false
+    default: 'false'
 
 outputs:
   targets-deployed:
@@ -210,10 +225,10 @@ runs:
           CMD="$CMD --dry-run"
         fi
 
-        # Add workers (default: 8 for parallel execution)
-        WORKERS="${{ inputs.workers }}"
-        if [[ -n "$WORKERS" && "$WORKERS" != "0" ]]; then
-          CMD="$CMD --workers $WORKERS"
+        # Add threads (default: 8 for parallel execution)
+        THREADS="${{ inputs.threads }}"
+        if [[ -n "$THREADS" && "$THREADS" != "0" ]]; then
+          CMD="$CMD --threads $THREADS"
         fi
 
         # Add filter if specified
@@ -285,3 +300,180 @@ runs:
         fi
 
         echo "✅ Deployment completed successfully"
+
+    - name: Generate GitHub Job Summary
+      if: inputs.annotate-summary == 'true'
+      shell: bash
+      run: |
+        CREATED="${{ steps.sync.outputs.resources_created }}"
+        UPDATED="${{ steps.sync.outputs.resources_updated }}"
+        SKIPPED="${{ steps.sync.outputs.resources_skipped }}"
+        TARGETS="${{ steps.sync.outputs.targets }}"
+        DRY_RUN="${{ inputs.dry-run }}"
+        JSON_REPORT_PATH="${{ steps.sync.outputs.json_report_path }}"
+
+        # Determine status emoji and text
+        if [[ "$DRY_RUN" == "true" ]]; then
+          STATUS_EMOJI="🔍"
+          STATUS_TEXT="Dry Run Preview"
+        else
+          STATUS_EMOJI="🚀"
+          STATUS_TEXT="Deployment Complete"
+        fi
+
+        # Calculate total
+        TOTAL=$((CREATED + UPDATED + SKIPPED))
+
+        # Write summary header
+        cat >> $GITHUB_STEP_SUMMARY << EOF
+        ## $STATUS_EMOJI Kodexa $STATUS_TEXT
+
+        ### 📊 Summary
+
+        | Metric | Count |
+        |--------|-------|
+        | 🆕 Created | $CREATED |
+        | 🔄 Updated | $UPDATED |
+        | ⏭️ Unchanged | $SKIPPED |
+        | **Total** | **$TOTAL** |
+
+        ### 📍 Details
+
+        | Property | Value |
+        |----------|-------|
+        | Repository | \`${{ github.repository }}\` |
+        | Branch | \`${{ github.ref_name }}\` |
+        | Commit | \`${{ github.sha }}\` |
+        | Actor | @${{ github.actor }} |
+        | Targets | $TARGETS |
+
+        EOF
+
+        # Add environment breakdown if JSON report exists and has target info
+        if [[ -f "$JSON_REPORT_PATH" ]]; then
+          # Try to extract environment info from JSON (if jq is available)
+          if command -v jq &> /dev/null; then
+            ENV_INFO=$(jq -r '.targets[]? | "| \(.environment // .name // "unknown") | \(.resources_updated // 0) updated, \(.resources_created // 0) created |"' "$JSON_REPORT_PATH" 2>/dev/null || echo "")
+            if [[ -n "$ENV_INFO" ]]; then
+              cat >> $GITHUB_STEP_SUMMARY << EOF
+
+        ### 🏢 Environments
+
+        | Environment | Resources |
+        |-------------|-----------|
+        $ENV_INFO
+
+        EOF
+            fi
+          fi
+        fi
+
+        echo "📋 GitHub Job Summary generated"
+
+    - name: Send Slack Notification
+      if: inputs.slack-channel-id != '' && inputs.slack-token != ''
+      shell: bash
+      run: |
+        CREATED="${{ steps.sync.outputs.resources_created }}"
+        UPDATED="${{ steps.sync.outputs.resources_updated }}"
+        SKIPPED="${{ steps.sync.outputs.resources_skipped }}"
+        DRY_RUN="${{ inputs.dry-run }}"
+        CHANNEL_ID="${{ inputs.slack-channel-id }}"
+        SLACK_TOKEN="${{ inputs.slack-token }}"
+
+        # Calculate total
+        TOTAL=$((CREATED + UPDATED + SKIPPED))
+
+        # Determine status
+        if [[ "$DRY_RUN" == "true" ]]; then
+          STATUS_EMOJI=":mag:"
+          STATUS_TEXT="Dry Run Preview"
+          COLOR="#3498db"
+        else
+          STATUS_EMOJI=":rocket:"
+          STATUS_TEXT="Deployment Complete"
+          COLOR="#2ecc71"
+        fi
+
+        # Build run URL
+        RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+        # Create Slack Block Kit message
+        SLACK_PAYLOAD=$(cat << EOFSLACK
+        {
+          "channel": "$CHANNEL_ID",
+          "blocks": [
+            {
+              "type": "header",
+              "text": {
+                "type": "plain_text",
+                "text": "$STATUS_EMOJI Kodexa $STATUS_TEXT",
+                "emoji": true
+              }
+            },
+            {
+              "type": "section",
+              "fields": [
+                {
+                  "type": "mrkdwn",
+                  "text": "*Repository:*\n<${{ github.server_url }}/${{ github.repository }}|${{ github.repository }}>"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Branch:*\n\`${{ github.ref_name }}\`"
+                }
+              ]
+            },
+            {
+              "type": "section",
+              "fields": [
+                {
+                  "type": "mrkdwn",
+                  "text": "*:new: Created:*\n$CREATED"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*:arrows_counterclockwise: Updated:*\n$UPDATED"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*:next_track_button: Unchanged:*\n$SKIPPED"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*:bar_chart: Total:*\n$TOTAL"
+                }
+              ]
+            },
+            {
+              "type": "context",
+              "elements": [
+                {
+                  "type": "mrkdwn",
+                  "text": "Triggered by *${{ github.actor }}* • <$RUN_URL|View Run #${{ github.run_number }}>"
+                }
+              ]
+            }
+          ],
+          "attachments": [
+            {
+              "color": "$COLOR"
+            }
+          ]
+        }
+        EOFSLACK
+        )
+
+        # Send to Slack
+        RESPONSE=$(curl -s -X POST "https://slack.com/api/chat.postMessage" \
+          -H "Authorization: Bearer $SLACK_TOKEN" \
+          -H "Content-Type: application/json" \
+          -d "$SLACK_PAYLOAD")
+
+        # Check response
+        OK=$(echo "$RESPONSE" | grep -o '"ok":true' || echo "")
+        if [[ -n "$OK" ]]; then
+          echo "✅ Slack notification sent successfully"
+        else
+          echo "⚠️ Slack notification may have failed. Response: $RESPONSE"
+        fi

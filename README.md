@@ -107,10 +107,13 @@ jobs:
 | `metadata-dir` | Metadata directory | No | Auto-discovered |
 | `dry-run` | Preview only (`true`/`false`) | No | `false` |
 | `kdx-version` | kdx-cli version | No | `latest` |
-| `workers` | Number of parallel workers | No | `8` |
+| `threads` | Number of parallel threads | No | `8` |
 | `filter` | Resource filter pattern | No | - |
 | `branch` | Override branch detection | No | - |
 | `tag` | Override with tag mapping | No | - |
+| `slack-channel-id` | Slack channel ID for notifications | No | - |
+| `slack-token` | Slack Bot Token for posting | No | - |
+| `annotate-summary` | Add summary to GitHub job | No | `false` |
 
 ## Outputs
 
@@ -235,7 +238,7 @@ targets:
 
 ### Parallel Execution & Filtering
 
-Speed up deployments with parallel workers and filter resources:
+Speed up deployments with parallel threads and filter resources:
 
 ```yaml
 name: Deploy with Parallel Execution
@@ -253,7 +256,7 @@ jobs:
       - id: deploy
         uses: kodexa-ai/kdx-sync-action@v2
         with:
-          workers: 8              # 8 parallel workers (default)
+          threads: 8             # 8 parallel threads (default)
           filter: "invoice-*"    # Only deploy resources matching pattern
         env:
           KODEXA_PROD_API_KEY: ${{ secrets.KODEXA_PROD_API_KEY }}
@@ -338,6 +341,109 @@ jobs:
         with:
           name: deployment-report
           path: ${{ steps.deploy.outputs.json-report-path }}
+```
+
+### Built-in Slack Notifications
+
+Send rich deployment summaries to Slack automatically:
+
+```yaml
+name: Deploy with Slack
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: kodexa-ai/kdx-sync-action@v2
+        with:
+          slack-channel-id: ${{ secrets.SLACK_CHANNEL_ID }}
+          slack-token: ${{ secrets.SLACK_BOT_TOKEN }}
+        env:
+          KODEXA_PROD_API_KEY: ${{ secrets.KODEXA_PROD_API_KEY }}
+```
+
+This sends a formatted message to Slack with:
+- 🚀 Deployment status (or 🔍 for dry runs)
+- Repository and branch information
+- Resource counts (created, updated, unchanged)
+- Link to the GitHub Actions run
+- Triggered-by information
+
+**Slack Setup:**
+1. Create a Slack App at https://api.slack.com/apps
+2. Add `chat:write` OAuth scope
+3. Install to your workspace
+4. Copy the Bot Token (`xoxb-...`) to `SLACK_BOT_TOKEN` secret
+5. Get channel ID (right-click channel → Copy link → extract ID)
+
+### GitHub Job Summary
+
+Add a deployment summary directly to the GitHub Actions run:
+
+```yaml
+name: Deploy with Summary
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: kodexa-ai/kdx-sync-action@v2
+        with:
+          annotate-summary: true
+        env:
+          KODEXA_PROD_API_KEY: ${{ secrets.KODEXA_PROD_API_KEY }}
+```
+
+This adds a markdown summary to the job that includes:
+- Summary table with created/updated/unchanged counts
+- Repository, branch, commit, and actor details
+- Environment breakdown (if available in JSON report)
+
+The summary appears in the "Summary" tab of the workflow run.
+
+### Full-Featured Example
+
+Combine all notification options:
+
+```yaml
+name: Deploy with All Notifications
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: deploy
+        uses: kodexa-ai/kdx-sync-action@v2
+        with:
+          threads: 8
+          annotate-summary: true
+          slack-channel-id: ${{ secrets.SLACK_CHANNEL_ID }}
+          slack-token: ${{ secrets.SLACK_BOT_TOKEN }}
+        env:
+          KODEXA_PROD_API_KEY: ${{ secrets.KODEXA_PROD_API_KEY }}
+
+      - name: Custom Processing
+        run: |
+          echo "Created: ${{ steps.deploy.outputs.resources-created }}"
+          echo "Updated: ${{ steps.deploy.outputs.resources-updated }}"
 ```
 
 ## Configuration
