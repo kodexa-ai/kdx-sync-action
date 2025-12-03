@@ -107,6 +107,10 @@ jobs:
 | `metadata-dir` | Metadata directory | No | Auto-discovered |
 | `dry-run` | Preview only (`true`/`false`) | No | `false` |
 | `kdx-version` | kdx-cli version | No | `latest` |
+| `workers` | Number of parallel workers | No | `8` |
+| `filter` | Resource filter pattern | No | - |
+| `branch` | Override branch detection | No | - |
+| `tag` | Override with tag mapping | No | - |
 
 ## Outputs
 
@@ -116,6 +120,8 @@ jobs:
 | `resources-created` | Resources created |
 | `resources-updated` | Resources updated |
 | `resources-skipped` | Resources unchanged |
+| `json-report` | Full JSON deployment report |
+| `json-report-path` | Path to JSON report file |
 
 ## Examples
 
@@ -227,6 +233,113 @@ targets:
     manifests: [organizations/org-b/manifest.yaml]
 ```
 
+### Parallel Execution & Filtering
+
+Speed up deployments with parallel workers and filter resources:
+
+```yaml
+name: Deploy with Parallel Execution
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: deploy
+        uses: kodexa-ai/kdx-sync-action@v2
+        with:
+          workers: 8              # 8 parallel workers (default)
+          filter: "invoice-*"    # Only deploy resources matching pattern
+        env:
+          KODEXA_PROD_API_KEY: ${{ secrets.KODEXA_PROD_API_KEY }}
+
+      # Use JSON report in subsequent steps
+      - name: Process Results
+        run: |
+          echo "JSON Report: ${{ steps.deploy.outputs.json-report }}"
+```
+
+### Tag-Based Deployment
+
+Deploy based on git tags instead of branches:
+
+```yaml
+name: Deploy on Tag
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: kodexa-ai/kdx-sync-action@v2
+        with:
+          tag: ${{ github.ref_name }}  # Use the pushed tag
+        env:
+          KODEXA_PROD_API_KEY: ${{ secrets.KODEXA_PROD_API_KEY }}
+```
+
+With tag_mappings in sync-config.yaml:
+
+```yaml
+tag_mappings:
+  - pattern: "v*"
+    target: production
+    environment: prod
+
+  - pattern: "rc-*"
+    target: staging
+    environment: staging
+```
+
+### Using JSON Output
+
+Access the structured deployment report in subsequent steps:
+
+```yaml
+name: Deploy with Notifications
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: deploy
+        uses: kodexa-ai/kdx-sync-action@v2
+        env:
+          KODEXA_PROD_API_KEY: ${{ secrets.KODEXA_PROD_API_KEY }}
+
+      - name: Send Slack Notification
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "Deployment completed: ${{ steps.deploy.outputs.resources-updated }} updated, ${{ steps.deploy.outputs.resources-created }} created"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+
+      - name: Upload JSON Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-report
+          path: ${{ steps.deploy.outputs.json-report-path }}
+```
+
 ## Configuration
 
 ### Complete Example
@@ -290,16 +403,36 @@ targets:
       - organizations/acme-corp/manifest.yaml
 ```
 
-### Branch Patterns
+### Branch & Tag Patterns
 
-Glob patterns supported:
+Glob patterns supported for both `branch_mappings` and `tag_mappings`:
 - `main` - Exact
 - `feature/*` - Any feature branch
 - `release/*` - Any release
 - `hotfix/*` - Any hotfix
+- `v*` - Any version tag
 - `*` - Fallback (matches anything)
 
 First match wins.
+
+### Tag Mappings
+
+Deploy based on git tags (useful for release workflows):
+
+```yaml
+tag_mappings:
+  - pattern: "v*"
+    target: production
+    environment: prod
+
+  - pattern: "rc-*"
+    target: staging
+    environment: staging
+
+  - pattern: "beta-*"
+    target: development
+    environment: dev
+```
 
 ## Security
 

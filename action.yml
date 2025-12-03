@@ -27,6 +27,26 @@ inputs:
     required: false
     default: 'latest'
 
+  workers:
+    description: 'Number of parallel workers for resource deployment (default: 8)'
+    required: false
+    default: '8'
+
+  filter:
+    description: 'Filter pattern for resources (e.g., "invoice-*")'
+    required: false
+    default: ''
+
+  branch:
+    description: 'Override branch detection with specific branch mapping'
+    required: false
+    default: ''
+
+  tag:
+    description: 'Override branch detection with specific tag mapping'
+    required: false
+    default: ''
+
 outputs:
   targets-deployed:
     description: 'Number of targets deployed'
@@ -43,6 +63,14 @@ outputs:
   resources-skipped:
     description: 'Number of resources skipped (unchanged)'
     value: ${{ steps.sync.outputs.resources_skipped }}
+
+  json-report:
+    description: 'JSON deployment report (can be used in subsequent steps)'
+    value: ${{ steps.sync.outputs.json_report }}
+
+  json-report-path:
+    description: 'Path to the JSON report file'
+    value: ${{ steps.sync.outputs.json_report_path }}
 
 runs:
   using: 'composite'
@@ -161,6 +189,9 @@ runs:
       run: |
         set -e
 
+        # Generate JSON report path
+        JSON_REPORT_PATH="${{ runner.temp }}/kdx-deploy-report.json"
+
         # Build command - simple and opinionated
         CMD="kdx sync deploy"
 
@@ -178,6 +209,30 @@ runs:
         if [[ "${{ inputs.dry-run }}" == "true" ]]; then
           CMD="$CMD --dry-run"
         fi
+
+        # Add workers (default: 8 for parallel execution)
+        WORKERS="${{ inputs.workers }}"
+        if [[ -n "$WORKERS" && "$WORKERS" != "0" ]]; then
+          CMD="$CMD --workers $WORKERS"
+        fi
+
+        # Add filter if specified
+        if [[ -n "${{ inputs.filter }}" ]]; then
+          CMD="$CMD --filter \"${{ inputs.filter }}\""
+        fi
+
+        # Add branch override if specified
+        if [[ -n "${{ inputs.branch }}" ]]; then
+          CMD="$CMD --branch \"${{ inputs.branch }}\""
+        fi
+
+        # Add tag override if specified
+        if [[ -n "${{ inputs.tag }}" ]]; then
+          CMD="$CMD --tag \"${{ inputs.tag }}\""
+        fi
+
+        # Always generate JSON report for structured output
+        CMD="$CMD --json-report \"$JSON_REPORT_PATH\""
 
         echo "🚀 Command: $CMD"
 
@@ -216,5 +271,17 @@ runs:
         echo "resources_created=$CREATED" >> $GITHUB_OUTPUT
         echo "resources_updated=$UPDATED" >> $GITHUB_OUTPUT
         echo "resources_skipped=$SKIPPED" >> $GITHUB_OUTPUT
+
+        # Output JSON report path and content
+        echo "json_report_path=$JSON_REPORT_PATH" >> $GITHUB_OUTPUT
+
+        # Read and output JSON report if it exists (for use in subsequent steps)
+        if [[ -f "$JSON_REPORT_PATH" ]]; then
+          # Use EOF delimiter for multiline JSON
+          echo "json_report<<EOF" >> $GITHUB_OUTPUT
+          cat "$JSON_REPORT_PATH" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "📊 JSON report generated at: $JSON_REPORT_PATH"
+        fi
 
         echo "✅ Deployment completed successfully"

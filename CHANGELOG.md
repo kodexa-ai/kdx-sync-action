@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2025-12-03
+
+### Added
+- **Parallel Execution**: New `workers` input to control parallel resource deployment (default: 8 workers)
+- **Resource Filtering**: New `filter` input for selective resource deployment by pattern (e.g., `invoice-*`)
+- **Branch Override**: New `branch` input to override automatic branch detection
+- **Tag Override**: New `tag` input to enable tag-based deployment mappings
+- **JSON Report Output**: New `json-report` output provides structured deployment data for subsequent workflow steps
+- **JSON Report Path**: New `json-report-path` output provides path to the JSON report file
+
+### Changed
+- Default worker count is now 8 for faster deployments (previously single-threaded)
+- Enhanced command building to support all new kdx-cli v0.5.0 features
+- Updated documentation with comprehensive examples for new features
+
+### Documentation
+- Added examples for parallel execution and filtering
+- Added examples for tag-based deployment workflows
+- Added examples for using JSON output in subsequent steps
+- Added tag_mappings configuration documentation
+
 ## [2.0.4] - 2025-11-19
 
 ### Fixed
