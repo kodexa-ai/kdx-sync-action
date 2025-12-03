@@ -247,7 +247,7 @@ runs:
         fi
 
         # Always generate JSON report for structured output
-        CMD="$CMD --json-report \"$JSON_REPORT_PATH\""
+        CMD="$CMD --output-json \"$JSON_REPORT_PATH\""
 
         echo "🚀 Command: $CMD"
 
