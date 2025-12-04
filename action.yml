@@ -398,22 +398,17 @@ runs:
         # Build environment breakdown from JSON report if available
         ENV_BLOCKS=""
         if [[ -f "$JSON_REPORT_PATH" ]] && command -v jq &> /dev/null; then
-          # Extract environment stats from JSON - try multiple possible structures
+          # Extract deployment stats from JSON - counts resources by action type per deployment
           ENV_TEXT=$(jq -r '
-            # Try .environments first, then root level keys that look like environments
-            if .environments then
-              .environments | to_entries |
-              map("• *\(.key)*: \(.value.updated // .value.resources_updated // 0) updated, \(.value.created // .value.resources_created // 0) created, \(.value.unchanged // .value.resources_unchanged // 0) unchanged") |
-              join("\n")
-            elif type == "object" then
-              # Check if root has environment-like keys (not metadata keys)
-              to_entries |
-              map(select(.key | test("^(dev|staging|prod|production|demo|test|smbc|cass|kodexa)"; "i"))) |
-              map("• *\(.key)*: \(.value.updated // .value.resources_updated // 0) updated, \(.value.created // .value.resources_created // 0) created, \(.value.unchanged // .value.resources_unchanged // 0) unchanged") |
-              join("\n")
-            else
-              ""
-            end
+            .deployments // [] |
+            map(
+              . as $d |
+              ($d.resources // [] | map(select(.action == "updated")) | length) as $updated |
+              ($d.resources // [] | map(select(.action == "created")) | length) as $created |
+              ($d.resources // [] | map(select(.action == "skipped" or .action == "unchanged")) | length) as $skipped |
+              "• <\($d.url)|\($d.environment)>: \($updated) updated, \($created) created, \($skipped) unchanged"
+            ) |
+            join("\n")
           ' "$JSON_REPORT_PATH" 2>/dev/null || echo "")
 
           if [[ -n "$ENV_TEXT" && "$ENV_TEXT" != "" ]]; then
@@ -425,7 +420,7 @@ runs:
               "type": "section",
               "text": {
                 "type": "mrkdwn",
-                "text": "*:office: Environments:*\n'"$ENV_TEXT"'"
+                "text": "*:globe_with_meridians: Deployments:*\n'"$ENV_TEXT"'"
               }
             }'
           fi
