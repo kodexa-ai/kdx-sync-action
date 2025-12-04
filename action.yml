@@ -345,19 +345,29 @@ runs:
 
         EOF
 
-        # Add environment breakdown if JSON report exists and has target info
+        # Add deployment breakdown if JSON report exists
         if [[ -f "$JSON_REPORT_PATH" ]]; then
-          # Try to extract environment info from JSON (if jq is available)
           if command -v jq &> /dev/null; then
-            ENV_INFO=$(jq -r '.targets[]? | "| \(.environment // .name // "unknown") | \(.resources_updated // 0) updated, \(.resources_created // 0) created |"' "$JSON_REPORT_PATH" 2>/dev/null || echo "")
-            if [[ -n "$ENV_INFO" ]]; then
+            # Extract deployment stats - counts resources by action type per deployment
+            DEPLOY_INFO=$(jq -r '
+              .deployments // [] |
+              map(
+                . as $d |
+                ($d.resources // [] | map(select(.action == "updated")) | length) as $updated |
+                ($d.resources // [] | map(select(.action == "created")) | length) as $created |
+                ($d.resources // [] | map(select(.action == "skipped" or .action == "unchanged")) | length) as $skipped |
+                "| [\($d.environment)](\($d.url)) | \($updated) | \($created) | \($skipped) |"
+              ) |
+              join("\n")
+            ' "$JSON_REPORT_PATH" 2>/dev/null || echo "")
+            if [[ -n "$DEPLOY_INFO" ]]; then
               cat >> $GITHUB_STEP_SUMMARY << EOF
 
-        ### 🏢 Environments
+        ### 🌐 Deployments
 
-        | Environment | Resources |
-        |-------------|-----------|
-        $ENV_INFO
+        | Environment | Updated | Created | Unchanged |
+        |-------------|---------|---------|-----------|
+        $DEPLOY_INFO
 
         EOF
             fi
