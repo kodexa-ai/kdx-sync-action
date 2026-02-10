@@ -123,10 +123,13 @@ jobs:
       - name: Checkout action
         uses: actions/checkout@v4
 
+      - name: Install actionlint
+        run: |
+          bash <(curl -s https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+
       - name: Validate action metadata
-        uses: docker://rhysd/actionlint:latest
-        with:
-          args: -color .github/workflows/*.yml
+        run: |
+          ./actionlint -color .github/workflows/*.yml
 
   test-outputs:
     name: Test action outputs
