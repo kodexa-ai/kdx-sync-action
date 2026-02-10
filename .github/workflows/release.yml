@@ -23,12 +23,12 @@ jobs:
       - name: Extract version from tag
         id: version
         run: |
-          VERSION=${GITHUB_REF#refs/tags/}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          VERSION="${GITHUB_REF#refs/tags/}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Version: $VERSION"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           name: Release ${{ steps.version.outputs.version }}
           draft: false
@@ -59,13 +59,13 @@ jobs:
 
       - name: Update major version tag
         run: |
-          VERSION=${GITHUB_REF#refs/tags/}
-          MAJOR_VERSION=$(echo $VERSION | cut -d. -f1)
+          VERSION="${GITHUB_REF#refs/tags/}"
+          MAJOR_VERSION="$(echo "$VERSION" | cut -d. -f1)"
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git tag -fa $MAJOR_VERSION -m "Update $MAJOR_VERSION tag to $VERSION"
-          git push origin $MAJOR_VERSION --force
+          git tag -fa "$MAJOR_VERSION" -m "Update $MAJOR_VERSION tag to $VERSION"
+          git push origin "$MAJOR_VERSION" --force
 
           echo "Updated tag $MAJOR_VERSION to point to $VERSION"
