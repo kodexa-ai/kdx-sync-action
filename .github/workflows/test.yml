@@ -32,24 +32,31 @@ jobs:
       - name: Create test sync config
         shell: bash
         run: |
-          mkdir -p test-metadata
-          cat > test-metadata/sync-config.yaml << EOF
+          mkdir -p test-metadata/organizations/test-org
+          cat > sync-config.yaml << EOF
           metadata_dir: test-metadata
-          organizations:
-            - slug: test-org
-              resources:
-                - type: taxonomy
-                  slug: test-taxonomy
+          branch_mappings:
+            - pattern: "*"
+              target: test
+              environment: test
+          environments:
+            test:
+              url: https://test.kodexa.com
+              api_key_from_env: KODEXA_TEST_API_KEY
+          targets:
+            test:
+              manifests:
+                - organizations/test-org/manifest.yaml
           EOF
 
       - name: Test action (dry run)
         uses: ./
         with:
-          kodexa-url: https://test.kodexa.com
-          kodexa-token: test-token-12345
-          sync-config: test-metadata/sync-config.yaml
+          sync-config: sync-config.yaml
           dry-run: true
         continue-on-error: true  # Expected to fail without real credentials
+        env:
+          KODEXA_TEST_API_KEY: test-token-12345
 
       - name: Verify kdx was installed
         shell: bash
@@ -70,8 +77,6 @@ jobs:
       matrix:
         version:
           - latest
-          # Add specific versions as needed
-          # - v1.0.0
 
     steps:
       - name: Checkout action
@@ -79,24 +84,32 @@ jobs:
 
       - name: Create test config
         run: |
-          mkdir -p test-metadata
-          cat > test-metadata/sync-config.yaml << EOF
+          mkdir -p test-metadata/organizations/test-org
+          cat > sync-config.yaml << EOF
           metadata_dir: test-metadata
-          organizations:
-            - slug: test-org
-              resources:
-                - type: taxonomy
-                  slug: test-taxonomy
+          branch_mappings:
+            - pattern: "*"
+              target: test
+              environment: test
+          environments:
+            test:
+              url: https://test.kodexa.com
+              api_key_from_env: KODEXA_TEST_API_KEY
+          targets:
+            test:
+              manifests:
+                - organizations/test-org/manifest.yaml
           EOF
 
       - name: Test with kdx ${{ matrix.version }}
         uses: ./
         with:
-          kodexa-url: https://test.kodexa.com
-          kodexa-token: test-token
           kdx-version: ${{ matrix.version }}
+          sync-config: sync-config.yaml
           dry-run: true
         continue-on-error: true
+        env:
+          KODEXA_TEST_API_KEY: test-token
 
       - name: Verify version
         run: |
@@ -115,58 +128,6 @@ jobs:
         with:
           args: -color .github/workflows/*.yml
 
-  test-filtering:
-    name: Test organization and project filtering
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout action
-        uses: actions/checkout@v4
-
-      - name: Create test config
-        run: |
-          mkdir -p test-metadata
-          cat > test-metadata/sync-config.yaml << EOF
-          metadata_dir: test-metadata
-          organizations:
-            - slug: org1
-              resources:
-                - type: taxonomy
-                  slug: tax1
-            - slug: org2
-              resources:
-                - type: taxonomy
-                  slug: tax2
-          EOF
-
-      - name: Test with organization filter
-        uses: ./
-        with:
-          kodexa-url: https://test.kodexa.com
-          kodexa-token: test-token
-          organization: org1
-          dry-run: true
-        continue-on-error: true
-
-      - name: Test with project filter
-        uses: ./
-        with:
-          kodexa-url: https://test.kodexa.com
-          kodexa-token: test-token
-          project: org1/project1
-          dry-run: true
-        continue-on-error: true
-
-      - name: Test with multiple filters
-        uses: ./
-        with:
-          kodexa-url: https://test.kodexa.com
-          kodexa-token: test-token
-          organization: org1,org2
-          project: org1/project1,org2/project2
-          dry-run: true
-        continue-on-error: true
-
   test-outputs:
     name: Test action outputs
     runs-on: ubuntu-latest
@@ -177,28 +138,36 @@ jobs:
 
       - name: Create test config
         run: |
-          mkdir -p test-metadata
-          cat > test-metadata/sync-config.yaml << EOF
+          mkdir -p test-metadata/organizations/test-org
+          cat > sync-config.yaml << EOF
           metadata_dir: test-metadata
-          organizations:
-            - slug: test-org
-              resources:
-                - type: taxonomy
-                  slug: test-tax
+          branch_mappings:
+            - pattern: "*"
+              target: test
+              environment: test
+          environments:
+            test:
+              url: https://test.kodexa.com
+              api_key_from_env: KODEXA_TEST_API_KEY
+          targets:
+            test:
+              manifests:
+                - organizations/test-org/manifest.yaml
           EOF
 
       - name: Run action
         id: sync
         uses: ./
         with:
-          kodexa-url: https://test.kodexa.com
-          kodexa-token: test-token
+          sync-config: sync-config.yaml
           dry-run: true
         continue-on-error: true
+        env:
+          KODEXA_TEST_API_KEY: test-token
 
       - name: Check outputs
         run: |
-          echo "Organizations: ${{ steps.sync.outputs.organizations }}"
+          echo "Targets: ${{ steps.sync.outputs.targets-deployed }}"
           echo "Created: ${{ steps.sync.outputs.resources-created }}"
           echo "Updated: ${{ steps.sync.outputs.resources-updated }}"
           echo "Skipped: ${{ steps.sync.outputs.resources-skipped }}"

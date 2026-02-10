@@ -591,7 +591,7 @@ Check [releases](https://github.com/kodexa-ai/kdx-cli-releases/releases), specif
 
 ```yaml
 with:
-  kdx-version: "v0.1.20"
+  kdx-version: "v2026.2.0-21880937330"
 ```
 
 ### Branch Mapping Not Found

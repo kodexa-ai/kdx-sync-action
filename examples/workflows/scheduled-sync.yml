@@ -21,32 +21,11 @@ jobs:
 
       - name: Sync to Kodexa
         id: sync
-        uses: kodexa-ai/kdx-sync-action@v1
+        uses: kodexa-ai/kdx-sync-action@v2
         with:
-          kodexa-url: ${{ secrets.KODEXA_URL }}
-          kodexa-token: ${{ secrets.KODEXA_TOKEN }}
-
-      - name: Create summary
-        if: always()
-        run: |
-          TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
-
-          cat >> $GITHUB_STEP_SUMMARY << EOF
-          ## 🕐 Scheduled Sync Report
-
-          **Completed:** $TIMESTAMP
-
-          ### Results
-
-          | Metric | Value |
-          |--------|-------|
-          | Organizations | ${{ steps.sync.outputs.organizations }} |
-          | Resources Created | ${{ steps.sync.outputs.resources-created }} |
-          | Resources Updated | ${{ steps.sync.outputs.resources-updated }} |
-          | Resources Skipped | ${{ steps.sync.outputs.resources-skipped }} |
-
-          ${{ steps.sync.outcome == 'success' && '✅ Sync completed successfully' || '❌ Sync failed - review logs' }}
-          EOF
+          annotate-summary: true
+        env:
+          KODEXA_PROD_API_KEY: ${{ secrets.KODEXA_PROD_API_KEY }}
 
       - name: Notify on failure
         if: failure()

@@ -122,8 +122,10 @@ runs:
 
         if [[ "$VERSION" == "latest" ]]; then
           echo "🔍 Fetching latest kdx version..."
-          LATEST=$(curl -s https://api.github.com/repos/kodexa-ai/kdx-cli-releases/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
-          if [[ -z "$LATEST" ]]; then
+          # List releases and find the latest non-develop, non-draft release
+          LATEST=$(curl -s "https://api.github.com/repos/kodexa-ai/kdx-cli-releases/releases?per_page=30" \
+            | jq -r '[.[] | select(.tag_name | test("develop") | not) | select(.draft | not)] | .[0].tag_name')
+          if [[ -z "$LATEST" || "$LATEST" == "null" ]]; then
             echo "❌ Failed to fetch latest version"
             exit 1
           fi
@@ -204,7 +206,8 @@ runs:
         JSON_REPORT_PATH="${{ runner.temp }}/kdx-deploy-report.json"
 
         # Build command - simple and opinionated
-        CMD="kdx sync deploy"
+        # --skip-production-confirm prevents interactive prompts in CI/CD
+        CMD="kdx sync deploy --skip-production-confirm"
 
         # Add optional config path
         if [[ -n "${{ inputs.sync-config }}" ]]; then

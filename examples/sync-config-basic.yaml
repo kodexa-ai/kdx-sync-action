@@ -1,19 +1,19 @@
 # Basic sync configuration
-# This example shows a simple resource-based sync setup
+# Branch mappings drive deployment - push to main deploys to production
 
 metadata_dir: kodexa-metadata
 
-organizations:
-  - slug: my-organization
-    resources:
-      # Taxonomy for document classification
-      - type: taxonomy
-        slug: document-types
+branch_mappings:
+  - pattern: "main"
+    target: production
+    environment: prod
 
-      # Document store configuration
-      - type: store
-        slug: main-document-store
+environments:
+  prod:
+    url: https://platform.kodexa.com
+    api_key_from_env: KODEXA_PROD_API_KEY
 
-      # Feature type for text extraction
-      - type: featureType
-        slug: text-extraction
+targets:
+  production:
+    manifests:
+      - organizations/my-organization/manifest.yaml

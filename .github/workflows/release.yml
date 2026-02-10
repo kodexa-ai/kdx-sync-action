@@ -41,9 +41,8 @@ jobs:
 
             ```yaml
             - uses: kodexa-ai/kdx-sync-action@${{ steps.version.outputs.version }}
-              with:
-                kodexa-url: ${{ secrets.KODEXA_URL }}
-                kodexa-token: ${{ secrets.KODEXA_TOKEN }}
+              env:
+                KODEXA_PROD_API_KEY: ${{ secrets.KODEXA_PROD_API_KEY }}
             ```
 
             See the [README](https://github.com/kodexa-ai/kdx-sync-action#readme) for full documentation.

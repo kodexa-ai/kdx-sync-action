@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-02-10
+
+### Changed
+- **Updated kdx-cli version resolution** to support new `v2026.2.0-*` release format
+  - `latest` now resolves to the most recent non-develop release from the releases API
+  - Supports the new calver-based version scheme (e.g., `v2026.2.0-21880937330`)
+- **Added `--skip-production-confirm`** flag to `kdx sync deploy` to prevent interactive prompts in CI/CD
+- Updated all example workflows from v1 to v2 action format
+- Updated all example sync configs to use `branch_mappings`/`environments`/`targets` format
+- Updated test workflow to use v2 inputs and sync config format
+- Removed deprecated `test-filtering` job from test workflow (v1 `organization`/`project` inputs removed)
+
 ## [2.2.0] - 2025-12-03
 
 ### Added

@@ -1,71 +1,72 @@
 # Complete sync configuration example
-# This shows all supported resource types for organization-scoped resources
+# Shows branch mappings, tag mappings, multiple environments, and targets
 
 metadata_dir: kodexa-metadata
 
-organizations:
-  - slug: production-org
-    resources:
-      # Taxonomies - classification hierarchies
-      - type: taxonomy
-        slug: document-classification
+# Branch determines deployment target
+branch_mappings:
+  # Production
+  - pattern: "main"
+    target: production
+    environment: prod
 
-      - type: taxonomy
-        slug: entity-types
+  # Staging
+  - pattern: "staging"
+    target: staging
+    environment: staging
 
-      # Stores - data storage configurations
-      - type: store
-        slug: document-store
+  # Development
+  - pattern: "develop"
+    target: development
+    environment: dev
 
-      - type: store
-        slug: vector-store
+  - pattern: "feature/*"
+    target: development
+    environment: dev
 
-      - type: store
-        slug: graph-store
+  # Hotfix deploys to both staging and production
+  - pattern: "hotfix/*"
+    targets:
+      - name: staging
+        environment: staging
+      - name: production
+        environment: prod
 
-      # Knowledge types - rule templates
-      - type: knowledgeType
-        slug: conditional-knowledge
+# Tag-based deployments (optional)
+tag_mappings:
+  - pattern: "v*"
+    target: production
+    environment: prod
 
-      - type: knowledgeType
-        slug: extraction-rules
+  - pattern: "rc-*"
+    target: staging
+    environment: staging
 
-      # Feature types - generic capabilities
-      - type: featureType
-        slug: text-extraction
+# Environment API endpoints
+environments:
+  prod:
+    url: https://platform.kodexa.com
+    api_key_from_env: KODEXA_PROD_API_KEY
 
-      - type: featureType
-        slug: entity-recognition
+  staging:
+    url: https://staging.kodexa.com
+    api_key_from_env: KODEXA_STAGING_API_KEY
 
-      # Feature instances - environment-specific deployments
-      - type: featureInstance
-        slug: ocr-extractor-prod
+  dev:
+    url: https://dev.kodexa.com
+    api_key_from_env: KODEXA_DEV_API_KEY
 
-      - type: featureInstance
-        slug: fast-ner-prod
+# Targets define what gets deployed
+targets:
+  production:
+    manifests:
+      - organizations/production-org/manifest.yaml
+      - organizations/production-org/modules/*/manifest.yaml
 
-      # Models - ML models
-      - type: model
-        slug: invoice-classifier-v3
+  staging:
+    manifests:
+      - organizations/production-org/manifest.yaml
 
-      - type: model
-        slug: entity-extractor-v2
-
-      # Project templates
-      - type: projectTemplate
-        slug: invoice-processing-template
-
-      # Data forms
-      - type: dataForm
-        slug: invoice-data-form
-
-      - type: dataForm
-        slug: customer-onboarding-form
-
-      # Exception types
-      - type: exceptionType
-        slug: validation-errors
-
-      # Projects (entire project configs)
-      - type: project
-        slug: finance-automation
+  development:
+    manifests:
+      - organizations/production-org/manifest.yaml

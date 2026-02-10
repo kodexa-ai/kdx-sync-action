@@ -1,35 +1,64 @@
 # Multi-organization sync configuration
-# This example shows syncing resources across multiple organizations
+# Shows deploying across multiple organizations in different environments
 
 metadata_dir: kodexa-metadata
 
-organizations:
-  # Production organization
-  - slug: production
-    resources:
-      - type: taxonomy
-        slug: document-types
-      - type: store
-        slug: prod-document-store
-      - type: featureInstance
-        slug: ocr-prod
+branch_mappings:
+  - pattern: "main"
+    targets:
+      - name: org-a-prod
+        environment: prod
+      - name: org-b-prod
+        environment: prod
 
-  # Staging organization
-  - slug: staging
-    resources:
-      - type: taxonomy
-        slug: document-types
-      - type: store
-        slug: staging-document-store
-      - type: featureInstance
-        slug: ocr-staging
+  - pattern: "staging"
+    targets:
+      - name: org-a-staging
+        environment: staging
+      - name: org-b-staging
+        environment: staging
 
-  # Development organization
-  - slug: development
-    resources:
-      - type: taxonomy
-        slug: document-types
-      - type: store
-        slug: dev-document-store
-      - type: featureInstance
-        slug: ocr-dev
+  - pattern: "develop"
+    targets:
+      - name: org-a-dev
+        environment: dev
+      - name: org-b-dev
+        environment: dev
+
+environments:
+  prod:
+    url: https://platform.kodexa.com
+    api_key_from_env: KODEXA_PROD_API_KEY
+
+  staging:
+    url: https://staging.kodexa.com
+    api_key_from_env: KODEXA_STAGING_API_KEY
+
+  dev:
+    url: https://dev.kodexa.com
+    api_key_from_env: KODEXA_DEV_API_KEY
+
+targets:
+  org-a-prod:
+    manifests:
+      - organizations/org-a/manifest.yaml
+
+  org-b-prod:
+    manifests:
+      - organizations/org-b/manifest.yaml
+
+  org-a-staging:
+    manifests:
+      - organizations/org-a/manifest.yaml
+
+  org-b-staging:
+    manifests:
+      - organizations/org-b/manifest.yaml
+
+  org-a-dev:
+    manifests:
+      - organizations/org-a/manifest.yaml
+
+  org-b-dev:
+    manifests:
+      - organizations/org-b/manifest.yaml

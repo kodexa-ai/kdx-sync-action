@@ -1,5 +1,6 @@
 # Basic sync workflow
 # Syncs to Kodexa on every push to main branch
+# Branch mappings in sync-config.yaml determine where resources are deployed
 
 name: Sync to Kodexa
 
@@ -18,10 +19,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Sync to Kodexa
-        uses: kodexa-ai/kdx-sync-action@v1
-        with:
-          kodexa-url: ${{ secrets.KODEXA_URL }}
-          kodexa-token: ${{ secrets.KODEXA_TOKEN }}
+        uses: kodexa-ai/kdx-sync-action@v2
+        env:
+          KODEXA_PROD_API_KEY: ${{ secrets.KODEXA_PROD_API_KEY }}
 
       - name: Report results
         if: success()

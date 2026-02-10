@@ -79,13 +79,20 @@ git init
 
 # Create sync config
 mkdir -p kodexa-metadata
-cat > kodexa-metadata/sync-config.yaml << 'EOF'
+cat > sync-config.yaml << 'EOF'
 metadata_dir: kodexa-metadata
-organizations:
-  - slug: test-org
-    resources:
-      - type: taxonomy
-        slug: test-taxonomy
+branch_mappings:
+  - pattern: "*"
+    target: test
+    environment: test
+environments:
+  test:
+    url: https://platform.kodexa.com
+    api_key_from_env: KODEXA_PROD_API_KEY
+targets:
+  test:
+    manifests:
+      - organizations/test-org/manifest.yaml
 EOF
 
 # Create workflow
@@ -101,17 +108,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: kodexa-ai/kdx-sync-action@v1
+      - uses: kodexa-ai/kdx-sync-action@v2
         with:
-          kodexa-url: ${{ secrets.KODEXA_URL }}
-          kodexa-token: ${{ secrets.KODEXA_TOKEN }}
           dry-run: true
+        env:
+          KODEXA_PROD_API_KEY: ${{ secrets.KODEXA_PROD_API_KEY }}
 EOF
 
 # Commit and push
 git add -A
 git commit -m "Test kdx-sync-action"
-# Push to GitHub and add secrets KODEXA_URL and KODEXA_TOKEN
+# Push to GitHub and add secret KODEXA_PROD_API_KEY
 ```
 
 ### 5. Publish to GitHub Marketplace (optional)
@@ -124,7 +131,7 @@ git commit -m "Test kdx-sync-action"
 6. Primary category: **Deployment**
 7. Click "Publish release"
 
-The action will be available at: `uses: kodexa-ai/kdx-sync-action@v1`
+The action will be available at: `uses: kodexa-ai/kdx-sync-action@v2`
 
 ### 6. Update README Badges (after publishing)
 
