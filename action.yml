@@ -57,6 +57,11 @@ inputs:
     required: false
     default: ''
 
+  use-prerelease:
+    description: 'Use prerelease (develop) version of kdx-cli (true/false)'
+    required: false
+    default: 'false'
+
   annotate-summary:
     description: 'Add deployment summary to GitHub Actions job summary (true/false)'
     required: false
@@ -119,18 +124,54 @@ runs:
       shell: bash
       run: |
         VERSION="${{ inputs.kdx-version }}"
+        USE_PRERELEASE="${{ inputs.use-prerelease }}"
 
         if [[ "$VERSION" == "latest" ]]; then
-          echo "🔍 Fetching latest kdx version..."
-          # List releases and find the latest non-develop, non-draft release
-          LATEST=$(curl -s "https://api.github.com/repos/kodexa-ai/kdx-cli-releases/releases?per_page=30" \
-            | jq -r '[.[] | select(.tag_name | test("develop") | not) | select(.draft | not)] | .[0].tag_name')
-          if [[ -z "$LATEST" || "$LATEST" == "null" ]]; then
-            echo "❌ Failed to fetch latest version"
-            exit 1
+          if [[ "$USE_PRERELEASE" == "true" ]]; then
+            echo "🔍 Fetching latest prerelease (develop) kdx version..."
+            JQ_FILTER='[.[] | select(.tag_name | test("develop")) | select(.draft | not)] | .[0].tag_name'
+          else
+            echo "🔍 Fetching latest stable kdx version..."
+            JQ_FILTER='[.[] | select(.tag_name | test("develop") | not) | select(.draft | not)] | .[0].tag_name'
           fi
+
+          # Paginate through releases until we find a match
+          LATEST=""
+          PAGE=1
+          while [[ -z "$LATEST" || "$LATEST" == "null" ]]; do
+            BODY=$(curl -s "https://api.github.com/repos/kodexa-ai/kdx-cli-releases/releases?per_page=100&page=${PAGE}")
+            LATEST=$(echo "$BODY" | jq -r "$JQ_FILTER")
+
+            # Check if we got an empty page (no more releases)
+            RELEASE_COUNT=$(echo "$BODY" | jq 'length')
+            if [[ "$RELEASE_COUNT" -eq 0 ]]; then
+              echo "❌ No matching release found after scanning all pages"
+              exit 1
+            fi
+
+            if [[ -n "$LATEST" && "$LATEST" != "null" ]]; then
+              break
+            fi
+
+            PAGE=$((PAGE + 1))
+            echo "  Scanning page $PAGE..."
+
+            # Safety limit to avoid infinite loops
+            if [[ $PAGE -gt 20 ]]; then
+              echo "❌ Failed to find matching release after 20 pages"
+              exit 1
+            fi
+          done
+
           VERSION="$LATEST"
           echo "✅ Latest version: $VERSION"
+        fi
+
+        # Determine binary name: use-prerelease flag or auto-detect from version tag
+        if [[ "$USE_PRERELEASE" == "true" ]] || [[ "$VERSION" == *"develop"* ]]; then
+          echo "binary_name=kdx-dev" >> $GITHUB_OUTPUT
+        else
+          echo "binary_name=kdx" >> $GITHUB_OUTPUT
         fi
 
         echo "version=$VERSION" >> $GITHUB_OUTPUT
@@ -149,25 +190,27 @@ runs:
         VERSION="${{ steps.version.outputs.version }}"
         OS="${{ steps.detect.outputs.os }}"
         ARCH="${{ steps.detect.outputs.arch }}"
+        BINARY_NAME="${{ steps.version.outputs.binary_name }}"
 
         # Construct download URL based on goreleaser naming
+        # Prerelease uses kdx-dev as archive/binary name, stable uses kdx
         if [[ "$OS" == "windows" ]]; then
-          ARCHIVE="kdx_${VERSION#v}_${OS}_${ARCH}.zip"
-          BINARY="kdx.exe"
+          ARCHIVE="${BINARY_NAME}_${VERSION#v}_${OS}_${ARCH}.zip"
+          BINARY="${BINARY_NAME}.exe"
         else
-          ARCHIVE="kdx_${VERSION#v}_${OS}_${ARCH}.tar.gz"
-          BINARY="kdx"
+          ARCHIVE="${BINARY_NAME}_${VERSION#v}_${OS}_${ARCH}.tar.gz"
+          BINARY="${BINARY_NAME}"
         fi
 
         DOWNLOAD_URL="https://github.com/kodexa-ai/kdx-cli-releases/releases/download/${VERSION}/${ARCHIVE}"
 
-        echo "📥 Downloading kdx from: $DOWNLOAD_URL"
+        echo "📥 Downloading ${BINARY_NAME} from: $DOWNLOAD_URL"
 
         mkdir -p "${{ runner.temp }}/kdx-download"
         cd "${{ runner.temp }}/kdx-download"
 
         if ! curl -sL -f "$DOWNLOAD_URL" -o "$ARCHIVE"; then
-          echo "❌ Failed to download kdx from $DOWNLOAD_URL"
+          echo "❌ Failed to download ${BINARY_NAME} from $DOWNLOAD_URL"
           echo "Available releases: https://github.com/kodexa-ai/kdx-cli-releases/releases"
           exit 1
         fi
@@ -180,11 +223,18 @@ runs:
         fi
 
         # Move binary to cache location
+        # Always name it 'kdx' (or 'kdx.exe') on PATH so downstream steps work uniformly
         mkdir -p "${{ runner.temp }}/kdx-bin"
-        mv "$BINARY" "${{ runner.temp }}/kdx-bin/"
-        chmod +x "${{ runner.temp }}/kdx-bin/$BINARY"
+        if [[ "$BINARY" != "kdx" && "$BINARY" != "kdx.exe" ]]; then
+          TARGET_BINARY="${BINARY/kdx-dev/kdx}"
+          mv "$BINARY" "${{ runner.temp }}/kdx-bin/$TARGET_BINARY"
+          chmod +x "${{ runner.temp }}/kdx-bin/$TARGET_BINARY"
+        else
+          mv "$BINARY" "${{ runner.temp }}/kdx-bin/"
+          chmod +x "${{ runner.temp }}/kdx-bin/$BINARY"
+        fi
 
-        echo "✅ Downloaded kdx $VERSION"
+        echo "✅ Downloaded ${BINARY_NAME} $VERSION"
 
     - name: Add kdx to PATH
       shell: bash
