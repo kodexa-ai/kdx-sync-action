@@ -1,0 +1,48 @@
+# Manual pull with environment selection
+name: Sync Pull (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to pull from'
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      target:
+        description: 'Target to pull'
+        required: true
+        default: 'production'
+      discover:
+        description: 'Discover new resources'
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: kodexa-ai/kdx-sync-action@v3
+        with:
+          mode: pull
+          target: ${{ inputs.target }}
+          environment: ${{ inputs.environment }}
+          discover: ${{ inputs.discover }}
+          branch-name: sync/${{ inputs.environment }}
+          pr-title: 'Sync: pull from ${{ inputs.environment }}'
+          annotate-summary: true
+        env:
+          KODEXA_PROD_API_KEY: ${{ secrets.KODEXA_PROD_API_KEY }}
+          KODEXA_STAGING_API_KEY: ${{ secrets.KODEXA_STAGING_API_KEY }}
+          KODEXA_DEV_API_KEY: ${{ secrets.KODEXA_DEV_API_KEY }}

@@ -1,0 +1,30 @@
+# Periodically pull changes from production to keep git in sync with UI edits
+name: Sync Pull (Scheduled)
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # Daily at 6am UTC
+  workflow_dispatch:       # Manual trigger
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: kodexa-ai/kdx-sync-action@v3
+        with:
+          mode: pull
+          target: production
+          environment: prod
+          discover: true
+          branch-name: sync/prod
+          pr-title: 'Sync: pull latest from production'
+          annotate-summary: true
+        env:
+          KODEXA_PROD_API_KEY: ${{ secrets.KODEXA_PROD_API_KEY }}

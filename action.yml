@@ -67,6 +67,48 @@ inputs:
     required: false
     default: 'false'
 
+  # Mode selection
+  mode:
+    description: 'Action mode: "deploy" (push to platform) or "pull" (pull from platform to git)'
+    required: false
+    default: 'deploy'
+
+  # Pull mode inputs
+  target:
+    description: 'Target name from sync-config.yaml (required for pull mode)'
+    required: false
+    default: ''
+
+  environment:
+    description: 'Environment name from sync-config.yaml (required for pull mode)'
+    required: false
+    default: ''
+
+  discover:
+    description: 'Enable --discover to find and merge new resources (pull mode only)'
+    required: false
+    default: 'true'
+
+  skip-missing:
+    description: 'Skip resources not found on server instead of failing (pull mode only)'
+    required: false
+    default: 'false'
+
+  branch-name:
+    description: 'Branch name for pull mode commits (default: sync/<environment>)'
+    required: false
+    default: ''
+
+  pr-title:
+    description: 'PR title for pull mode (default: "Sync from <environment>")'
+    required: false
+    default: ''
+
+  pr-base:
+    description: 'Base branch for the PR (default: main)'
+    required: false
+    default: 'main'
+
 outputs:
   targets-deployed:
     description: 'Number of targets deployed'
@@ -87,6 +129,15 @@ outputs:
   json-report-path:
     description: 'Path to the JSON report file'
     value: ${{ steps.sync.outputs.json_report_path }}
+
+  # Pull mode outputs
+  pr-url:
+    description: 'URL of the created or updated pull request (pull mode only)'
+    value: ${{ steps.pull-pr.outputs.pr_url }}
+
+  changes-detected:
+    description: 'Whether any file changes were detected after pull'
+    value: ${{ steps.pull-commit.outputs.changes_detected }}
 
 runs:
   using: 'composite'
@@ -246,8 +297,23 @@ runs:
       run: |
         kdx version
 
+    - name: Validate inputs
+      shell: bash
+      run: |
+        if [[ "${{ inputs.mode }}" == "pull" ]]; then
+          if [[ -z "${{ inputs.target }}" ]]; then
+            echo "::error::Input 'target' is required when mode is 'pull'"
+            exit 1
+          fi
+          if [[ -z "${{ inputs.environment }}" ]]; then
+            echo "::error::Input 'environment' is required when mode is 'pull'"
+            exit 1
+          fi
+        fi
+
     - name: Run kdx sync deploy
       id: sync
+      if: inputs.mode != 'pull'
       shell: bash
       run: |
         set -e
@@ -351,7 +417,7 @@ runs:
         echo "✅ Deployment completed successfully"
 
     - name: Generate GitHub Job Summary
-      if: inputs.annotate-summary == 'true'
+      if: inputs.annotate-summary == 'true' && inputs.mode != 'pull'
       shell: bash
       run: |
         CREATED="${{ steps.sync.outputs.resources_created }}"
@@ -430,7 +496,7 @@ runs:
         echo "📋 GitHub Job Summary generated"
 
     - name: Send Slack Notification
-      if: inputs.slack-channel-id != '' && inputs.slack-token != ''
+      if: inputs.slack-channel-id != '' && inputs.slack-token != '' && inputs.mode != 'pull'
       shell: bash
       run: |
         CREATED="${{ steps.sync.outputs.resources_created }}"
@@ -568,3 +634,200 @@ runs:
         else
           echo "⚠️ Slack notification may have failed. Response: $RESPONSE"
         fi
+
+    # ================================================================
+    # Pull Mode Steps
+    # ================================================================
+
+    - name: Pull resources
+      id: pull-resources
+      if: inputs.mode == 'pull'
+      shell: bash
+      run: |
+        set -e
+
+        # Build pull command
+        PULL_CMD="kdx sync pull --target ${{ inputs.target }} --env ${{ inputs.environment }}"
+
+        if [[ "${{ inputs.discover }}" == "true" ]]; then
+          PULL_CMD="$PULL_CMD --discover"
+        fi
+
+        if [[ "${{ inputs.skip-missing }}" == "true" ]]; then
+          PULL_CMD="$PULL_CMD --skip-missing"
+        fi
+
+        if [[ -n "${{ inputs.threads }}" && "${{ inputs.threads }}" != "0" ]]; then
+          PULL_CMD="$PULL_CMD --threads ${{ inputs.threads }}"
+        fi
+
+        if [[ -n "${{ inputs.sync-config }}" ]]; then
+          PULL_CMD="$PULL_CMD --config ${{ inputs.sync-config }}"
+        fi
+
+        if [[ -n "${{ inputs.metadata-dir }}" ]]; then
+          PULL_CMD="$PULL_CMD --metadata-dir ${{ inputs.metadata-dir }}"
+        fi
+
+        echo "🔄 Running: $PULL_CMD"
+        set +e
+        OUTPUT=$(eval "$PULL_CMD" 2>&1 | tee /dev/stderr)
+        EXIT_CODE=$?
+        set -e
+
+        if [[ $EXIT_CODE -ne 0 ]]; then
+          echo "❌ Pull failed with exit code $EXIT_CODE"
+          exit $EXIT_CODE
+        fi
+
+        # Parse resource counts from output (best effort)
+        CREATED=$(echo "$OUTPUT" | sed -n 's/.*[Rr]esources:[[:space:]]*\([0-9]*\)[[:space:]]*created.*/\1/p' | head -1)
+        CREATED=${CREATED:-0}
+        UPDATED=$(echo "$OUTPUT" | sed -n 's/.*[Rr]esources:[[:space:]]*\([0-9]*\)[[:space:]]*updated.*/\1/p' | head -1)
+        UPDATED=${UPDATED:-0}
+        SKIPPED=$(echo "$OUTPUT" | sed -n 's/.*[Rr]esources:[[:space:]]*\([0-9]*\)[[:space:]]*unchanged.*/\1/p' | head -1)
+        SKIPPED=${SKIPPED:-0}
+
+        echo "resources_created=$CREATED" >> $GITHUB_OUTPUT
+        echo "resources_updated=$UPDATED" >> $GITHUB_OUTPUT
+        echo "resources_skipped=$SKIPPED" >> $GITHUB_OUTPUT
+        echo "✅ Pull completed"
+
+    - name: Commit changes
+      id: pull-commit
+      if: inputs.mode == 'pull'
+      shell: bash
+      run: |
+        # Configure git
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+
+        # Check for changes (tracked modifications + untracked new files)
+        if git diff --quiet && git diff --cached --quiet && [ -z "$(git status --porcelain)" ]; then
+          echo "✅ No changes detected after pull"
+          echo "changes_detected=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
+        echo "changes_detected=true" >> $GITHUB_OUTPUT
+
+        # Determine branch name
+        BRANCH="${{ inputs.branch-name }}"
+        if [[ -z "$BRANCH" ]]; then
+          BRANCH="sync/${{ inputs.environment }}"
+        fi
+
+        # Create or switch to branch
+        git fetch origin "$BRANCH" 2>/dev/null || true
+        if git show-ref --verify --quiet "refs/remotes/origin/$BRANCH"; then
+          git checkout "$BRANCH"
+          git merge origin/${{ inputs.pr-base }} --no-edit 2>/dev/null || true
+        else
+          git checkout -b "$BRANCH"
+        fi
+
+        # Stage and commit
+        git add -A
+        TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M UTC")
+        COMMIT_MSG="sync: pull from ${{ inputs.environment }} ($TIMESTAMP)"
+        git commit -m "$COMMIT_MSG"
+
+        # Push branch
+        git push -u origin "$BRANCH" --force-with-lease
+
+        echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+        echo "📤 Changes committed and pushed to $BRANCH"
+
+    - name: Create or update PR
+      id: pull-pr
+      if: inputs.mode == 'pull' && steps.pull-commit.outputs.changes_detected == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        BRANCH="${{ steps.pull-commit.outputs.branch }}"
+        BASE="${{ inputs.pr-base }}"
+        TITLE="${{ inputs.pr-title }}"
+        if [[ -z "$TITLE" ]]; then
+          TITLE="Sync from ${{ inputs.environment }}"
+        fi
+
+        # Check if PR already exists for this branch
+        EXISTING_PR=$(gh pr list --head "$BRANCH" --base "$BASE" --json url --jq '.[0].url' 2>/dev/null || echo "")
+
+        if [[ -n "$EXISTING_PR" ]]; then
+          echo "📋 PR already exists: $EXISTING_PR"
+          echo "pr_url=$EXISTING_PR" >> $GITHUB_OUTPUT
+        else
+          CREATED="${{ steps.pull-resources.outputs.resources_created }}"
+          UPDATED="${{ steps.pull-resources.outputs.resources_updated }}"
+          SKIPPED="${{ steps.pull-resources.outputs.resources_skipped }}"
+
+          BODY="## Sync from ${{ inputs.environment }}
+
+        This PR was automatically generated by kdx-sync-action in pull mode.
+
+        **Target:** ${{ inputs.target }}
+        **Environment:** ${{ inputs.environment }}
+        **Discover:** ${{ inputs.discover }}
+
+        ### Changes
+        - Resources created: ${CREATED}
+        - Resources updated: ${UPDATED}
+        - Resources unchanged: ${SKIPPED}
+
+        Review the changes below and merge when ready."
+
+          PR_URL=$(gh pr create \
+            --title "$TITLE" \
+            --body "$BODY" \
+            --head "$BRANCH" \
+            --base "$BASE")
+          echo "✅ Created PR: $PR_URL"
+          echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Generate Pull Summary
+      if: inputs.mode == 'pull' && inputs.annotate-summary == 'true'
+      shell: bash
+      run: |
+        CHANGES="${{ steps.pull-commit.outputs.changes_detected }}"
+        PR_URL="${{ steps.pull-pr.outputs.pr_url }}"
+        CREATED="${{ steps.pull-resources.outputs.resources_created }}"
+        UPDATED="${{ steps.pull-resources.outputs.resources_updated }}"
+        SKIPPED="${{ steps.pull-resources.outputs.resources_skipped }}"
+
+        if [[ "$CHANGES" == "true" ]]; then
+          TOTAL=$((CREATED + UPDATED + SKIPPED))
+          cat >> $GITHUB_STEP_SUMMARY << EOFPULL
+        ## �� Kodexa Sync Pull Results
+
+        ### 📊 Summary
+
+        | Metric | Count |
+        |--------|-------|
+        | 🆕 Created | $CREATED |
+        | 🔄 Updated | $UPDATED |
+        | ⏭️ Unchanged | $SKIPPED |
+        | **Total** | **$TOTAL** |
+
+        ### 📍 Details
+
+        | Property | Value |
+        |----------|-------|
+        | Target | \`${{ inputs.target }}\` |
+        | Environment | \`${{ inputs.environment }}\` |
+        | Discover | ${{ inputs.discover }} |
+        | PR | [View PR](${PR_URL}) |
+
+        EOFPULL
+        else
+          cat >> $GITHUB_STEP_SUMMARY << EOFPULL
+        ## 🔄 Kodexa Sync Pull Results
+
+        ✅ No changes detected. Resources are in sync with **${{ inputs.environment }}**.
+
+        EOFPULL
+        fi
+
+        echo "📋 Pull summary generated"
