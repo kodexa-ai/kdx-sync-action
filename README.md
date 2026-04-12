@@ -90,7 +90,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: kodexa-ai/kdx-sync-action@v2
+      - uses: kodexa-ai/kdx-sync-action@v3
         env:
           KODEXA_PROD_API_KEY: ${{ secrets.KODEXA_PROD_API_KEY }}
           KODEXA_STAGING_API_KEY: ${{ secrets.KODEXA_STAGING_API_KEY }}
@@ -144,7 +144,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: kodexa-ai/kdx-sync-action@v2
+      - uses: kodexa-ai/kdx-sync-action@v3
         env:
           KODEXA_PROD_API_KEY: ${{ secrets.KODEXA_PROD_API_KEY }}
           KODEXA_STAGING_API_KEY: ${{ secrets.KODEXA_STAGING_API_KEY }}
@@ -171,7 +171,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - id: preview
-        uses: kodexa-ai/kdx-sync-action@v2
+        uses: kodexa-ai/kdx-sync-action@v3
         with:
           dry-run: true
         env:
@@ -210,7 +210,7 @@ jobs:
     environment: production  # Requires approval in Settings
     steps:
       - uses: actions/checkout@v4
-      - uses: kodexa-ai/kdx-sync-action@v2
+      - uses: kodexa-ai/kdx-sync-action@v3
         env:
           KODEXA_PROD_API_KEY: ${{ secrets.KODEXA_PROD_API_KEY }}
 ```
@@ -254,7 +254,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - id: deploy
-        uses: kodexa-ai/kdx-sync-action@v2
+        uses: kodexa-ai/kdx-sync-action@v3
         with:
           threads: 8             # 8 parallel threads (default)
           filter: "invoice-*"    # Only deploy resources matching pattern
@@ -284,7 +284,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: kodexa-ai/kdx-sync-action@v2
+      - uses: kodexa-ai/kdx-sync-action@v3
         with:
           tag: ${{ github.ref_name }}  # Use the pushed tag
         env:
@@ -322,7 +322,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - id: deploy
-        uses: kodexa-ai/kdx-sync-action@v2
+        uses: kodexa-ai/kdx-sync-action@v3
         env:
           KODEXA_PROD_API_KEY: ${{ secrets.KODEXA_PROD_API_KEY }}
 
@@ -360,7 +360,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: kodexa-ai/kdx-sync-action@v2
+      - uses: kodexa-ai/kdx-sync-action@v3
         with:
           slack-channel-id: ${{ secrets.SLACK_CHANNEL_ID }}
           slack-token: ${{ secrets.SLACK_BOT_TOKEN }}
@@ -399,7 +399,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: kodexa-ai/kdx-sync-action@v2
+      - uses: kodexa-ai/kdx-sync-action@v3
         with:
           annotate-summary: true
         env:
@@ -431,7 +431,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - id: deploy
-        uses: kodexa-ai/kdx-sync-action@v2
+        uses: kodexa-ai/kdx-sync-action@v3
         with:
           threads: 8
           annotate-summary: true
@@ -445,6 +445,123 @@ jobs:
           echo "Created: ${{ steps.deploy.outputs.resources-created }}"
           echo "Updated: ${{ steps.deploy.outputs.resources-updated }}"
 ```
+
+## Pull Mode
+
+Pull mode syncs resources FROM a Kodexa instance back to git. It:
+1. Runs `kdx sync pull` to download resources
+2. Commits changes to a new branch
+3. Opens (or updates) a PR for review
+
+This is useful for capturing changes made in the Kodexa Studio UI and bringing them back into version control.
+
+### Quick Start (Pull)
+
+```yaml
+name: Sync Pull
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # Daily at 6am UTC
+  workflow_dispatch:
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: kodexa-ai/kdx-sync-action@v3
+        with:
+          mode: pull
+          target: production
+          environment: prod
+          discover: true
+          annotate-summary: true
+        env:
+          KODEXA_PROD_API_KEY: ${{ secrets.KODEXA_PROD_API_KEY }}
+```
+
+### Pull Inputs
+
+| Input | Description | Required | Default |
+|-------|-------------|----------|---------|
+| `mode` | Set to `pull` | Yes | `deploy` |
+| `target` | Target from sync-config.yaml | Yes (pull) | - |
+| `environment` | Environment from sync-config.yaml | Yes (pull) | - |
+| `discover` | Enable `--discover` for new resources | No | `true` |
+| `skip-missing` | Skip missing server resources | No | `false` |
+| `branch-name` | Branch for commits | No | `sync/<env>` |
+| `pr-title` | PR title | No | `Sync from <env>` |
+| `pr-base` | PR base branch | No | `main` |
+
+### Pull Outputs
+
+| Output | Description |
+|--------|-------------|
+| `pr-url` | URL of created/updated PR |
+| `changes-detected` | `true` if files changed |
+| `resources-created` | Resources created |
+| `resources-updated` | Resources updated |
+| `resources-skipped` | Resources unchanged |
+
+### Smart Discover
+
+When `discover: true` (default), the action uses `--discover` which:
+- On first run: queries the server and generates a manifest
+- On subsequent runs: merges new resources into the existing manifest
+- Respects commented-out resources (`# - slug`) as intentional exclusions
+- Warns about stale entries no longer on the server
+
+### On-Demand Pull
+
+```yaml
+name: Sync Pull (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to pull from'
+        required: true
+        type: choice
+        options: [dev, staging, prod]
+      target:
+        description: 'Target to pull'
+        required: true
+        default: 'production'
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: kodexa-ai/kdx-sync-action@v3
+        with:
+          mode: pull
+          target: ${{ inputs.target }}
+          environment: ${{ inputs.environment }}
+          discover: true
+          branch-name: sync/${{ inputs.environment }}
+          pr-title: 'Sync: pull from ${{ inputs.environment }}'
+        env:
+          KODEXA_PROD_API_KEY: ${{ secrets.KODEXA_PROD_API_KEY }}
+          KODEXA_STAGING_API_KEY: ${{ secrets.KODEXA_STAGING_API_KEY }}
+          KODEXA_DEV_API_KEY: ${{ secrets.KODEXA_DEV_API_KEY }}
+```
+
+> **Note:** Pull mode requires `permissions: contents: write` and `pull-requests: write` in your workflow, and `fetch-depth: 0` on the checkout step.
 
 ## Configuration
 
@@ -648,7 +765,7 @@ Check:
 
 ```yaml
 # New - simple
-- uses: kodexa-ai/kdx-sync-action@v2
+- uses: kodexa-ai/kdx-sync-action@v3
   env:
     KODEXA_PROD_API_KEY: ${{ secrets.KODEXA_PROD_API_KEY }}
 ```
@@ -673,7 +790,7 @@ Check:
 
 3. **Simplify workflow**:
    ```yaml
-   - uses: kodexa-ai/kdx-sync-action@v2
+   - uses: kodexa-ai/kdx-sync-action@v3
      env:
        KODEXA_PROD_API_KEY: ${{ secrets.KODEXA_PROD_API_KEY }}
    ```
